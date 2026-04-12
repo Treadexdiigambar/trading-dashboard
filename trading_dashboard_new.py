@@ -1477,9 +1477,9 @@ if not st.session_state.access_token:
     login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={API_KEY}&redirect_uri={REDIRECT_URI}"
     col_a, col_b = st.columns([2, 3])
     with col_a:
-        st.markdown(f'<a href="{login_url}" target="_self"><div style="background:#1d4ed8;border-radius:10px;padding:16px 24px;text-align:center;cursor:pointer;font-size:18px;font-weight:bold;color:white;margin-top:10px">🚀 Upstox Login Karo</div></a>', unsafe_allow_html=True)
+        st.link_button("🚀 Upstox Login Karo", login_url, use_container_width=True, type="primary")
     with col_b:
-        st.info("**Sirf yeh karo:**\n1. Button dabao\n2. Upstox pe login karo\n3. Dashboard automatically start hoga ✅")
+        st.info("**Sirf yeh karo:**\n1. Button dabao\n2. Upstox pe login karo\n3. Wapas aao → URL mein code dikhega → Auto login!")
 
     st.markdown("---")
     st.markdown("**⚙️ Manual Code — Agar automatic nahi hua:**")
