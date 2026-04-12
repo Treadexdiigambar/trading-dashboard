@@ -730,7 +730,7 @@ def start_callback_server(port):
 def get_access_token(auth_code):
     resp = requests.post("https://api.upstox.com/v2/login/authorization/token",
         data={"code": auth_code, "client_id": API_KEY, "client_secret": SECRET_KEY,
-              "redirect_uri": "http://127.0.0.1:8765", "grant_type": "authorization_code"})
+              "redirect_uri": "http://https://trading-dashboard-eqcqbcuwrwfvovcmrsyqpp.streamlit.app", "grant_type": "authorization_code"})
     if resp.status_code == 200:
         token = resp.json().get("access_token")
         if token: save_token(token)
@@ -1423,7 +1423,7 @@ if not st.session_state.access_token:
 if not st.session_state.access_token:
     st.markdown("---")
     st.subheader("🔐 Upstox Login")
-    login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={API_KEY}&redirect_uri=http://127.0.0.1:8765"
+    login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={API_KEY}&redirect_uri=http://https://trading-dashboard-eqcqbcuwrwfvovcmrsyqpp.streamlit.app"
     col_a, col_b = st.columns([2, 3])
     with col_a:
         st.markdown(f'<a href="{login_url}" target="_blank"><div style="background:#1d4ed8;border-radius:10px;padding:16px 24px;text-align:center;cursor:pointer;font-size:18px;font-weight:bold;color:white;margin-top:10px">🚀 Upstox Login Karo</div></a>', unsafe_allow_html=True)
