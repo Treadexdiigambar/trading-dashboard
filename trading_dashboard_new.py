@@ -1429,9 +1429,10 @@ if not st.session_state.access_token:
         st.markdown(f'<a href="{login_url}" target="_blank"><div style="background:#1d4ed8;border-radius:10px;padding:16px 24px;text-align:center;cursor:pointer;font-size:18px;font-weight:bold;color:white;margin-top:10px">🚀 Upstox Login Karo</div></a>', unsafe_allow_html=True)
     with col_b:
         st.info("**Sirf yeh karo:**\n1. Button dabao\n2. Upstox login karo\n3. Dashboard automatically start hoga ✅")
-   
-        
-    
+    if "server_started" not in st.session_state:
+        st.session_state.server_started = True
+        threading.Thread(target=start_callback_server, args=(8765,), daemon=True).start()
+    with st.expander("⚙️ Manual code daalo"):
         manual_code = st.text_input("Authorization Code:", placeholder="?code=XXXXX")
         if st.button("Submit Code"):
             if manual_code.strip():
