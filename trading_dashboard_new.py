@@ -728,15 +728,44 @@ def start_callback_server(port):
 
 # ── API functions ─────────────────────────────────────────────
 def get_access_token(auth_code):
-    resp = requests.post("https://api.upstox.com/v2/login/authorization/token",
-        data={"code": auth_code, "client_id": API_KEY, "client_secret": SECRET_KEY,
-              "redirect_uri": "https://trading-dashboard-eqcqbcuwrwfvovcmrsyqpp.streamlit.app", "grant_type": "authorization_code"})
-    if resp.status_code == 200:
-        token = resp.json().get("access_token")
-        if token: save_token(token)
-        return token
-    st.error(f"❌ Login Error: {resp.status_code}")
-    return None
+    REDIRECT_URI = "https://trading-dashboard-eqcqbcuwrwfvovcmrsyqpp.streamlit.app"
+    try:
+        resp = requests.post(
+            "https://api.upstox.com/v2/login/authorization/token",
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+            data={
+                "code":          auth_code,
+                "client_id":     API_KEY,
+                "client_secret": SECRET_KEY,
+                "redirect_uri":  REDIRECT_URI,
+                "grant_type":    "authorization_code"
+            },
+            timeout=15
+        )
+        if resp.status_code == 200:
+            token = resp.json().get("access_token")
+            if token:
+                save_token(token)
+                return token
+            st.error("❌ Token field nahi mila response mein.")
+            return None
+        # Detailed error message
+        try:
+            err = resp.json()
+            err_msg = err.get("message") or err.get("error_description") or str(err)
+        except Exception:
+            err_msg = resp.text[:200]
+        if resp.status_code == 401:
+            st.error(f"❌ Login Error 401 — Code expire/galat hai. Dobara Login button dabao. ({err_msg})")
+        else:
+            st.error(f"❌ Login Error: {resp.status_code} — {err_msg}")
+        return None
+    except requests.exceptions.Timeout:
+        st.error("❌ Timeout — Dobara try karo.")
+        return None
+    except Exception as e:
+        st.error(f"❌ Unexpected error: {e}")
+        return None
 
 def handle_401():
     st.session_state.access_token = None
@@ -1419,43 +1448,73 @@ if not st.session_state.access_token:
     saved = load_token()
     if saved: st.session_state.access_token = saved
 
+# ── URL se auto code capture (Streamlit Cloud redirect) ───────
+if not st.session_state.access_token:
+    try:
+        query_params = st.query_params
+        url_code = query_params.get("code", None)
+        if url_code:
+            # Code mile — turant token lo
+            with st.spinner("✅ Upstox se code mila! Login ho raha hai..."):
+                token = get_access_token(url_code)
+                if token:
+                    st.session_state.access_token = token
+                    # URL clean karo — code hata do
+                    st.query_params.clear()
+                    st.rerun()
+                else:
+                    st.error("❌ Token nahi mila — Dobara login karo.")
+                    st.query_params.clear()
+    except Exception as e:
+        print(f"[WARN] query_params read failed: {e}")
+
 # ── Login page ────────────────────────────────────────────────
+REDIRECT_URI = "https://trading-dashboard-eqcqbcuwrwfvovcmrsyqpp.streamlit.app"
+
 if not st.session_state.access_token:
     st.markdown("---")
     st.subheader("🔐 Upstox Login")
-    login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={API_KEY}&redirect_uri=https://trading-dashboard-eqcqbcuwrwfvovcmrsyqpp.streamlit.app"
+    login_url = f"https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={API_KEY}&redirect_uri={REDIRECT_URI}"
     col_a, col_b = st.columns([2, 3])
     with col_a:
-        st.markdown(f'<a href="{login_url}" target="_blank"><div style="background:#1d4ed8;border-radius:10px;padding:16px 24px;text-align:center;cursor:pointer;font-size:18px;font-weight:bold;color:white;margin-top:10px">🚀 Upstox Login Karo</div></a>', unsafe_allow_html=True)
+        st.markdown(f'<a href="{login_url}" target="_self"><div style="background:#1d4ed8;border-radius:10px;padding:16px 24px;text-align:center;cursor:pointer;font-size:18px;font-weight:bold;color:white;margin-top:10px">🚀 Upstox Login Karo</div></a>', unsafe_allow_html=True)
     with col_b:
-        st.info("**Sirf yeh karo:**\n1. Button dabao\n2. Upstox login karo\n3. Dashboard automatically start hoga ✅")
-    if "server_started" not in st.session_state:
-        st.session_state.server_started = True
-        threading.Thread(target=start_callback_server, args=(8765,), daemon=True).start()
-    with st.expander("⚙️ Manual code daalo"):
-        manual_code = st.text_input("Authorization Code:", placeholder="?code=XXXXX")
-        if st.button("Submit Code"):
-            if manual_code.strip():
-                with st.spinner("Token le raha hoon..."):
-                    token = get_access_token(manual_code.strip())
-                    if token:
-                        st.session_state.access_token = token
-                        st.session_state.pop("server_started", None)
-                        st.rerun()
-                    else:
-                        st.error("❌ Token nahi mila.")
-    if _captured_code["code"]:
-        with st.spinner("✅ Login ho gaya! Loading..."):
-            token = get_access_token(_captured_code["code"])
-            _captured_code["code"] = None
-            if token:
-                st.session_state.access_token = token
-                st.session_state.pop("server_started", None)
-                st.rerun()
-    else:
-        st.caption("⏳ Login ka wait kar raha hoon...")
-        time.sleep(0.5)  # Fast login check
-        st.rerun()
+        st.info("**Sirf yeh karo:**\n1. Button dabao\n2. Upstox pe login karo\n3. Dashboard automatically start hoga ✅")
+
+    st.markdown("---")
+    st.markdown("**⚙️ Manual Code — Agar automatic nahi hua:**")
+    st.markdown("""
+    <div style='background:#0d1929;border-radius:8px;padding:12px 16px;font-size:13px;color:#90b8d8;border:1px solid rgba(29,78,216,0.2);margin-bottom:10px'>
+    1. Upstox login ke baad URL kuch aisa dikhega:<br>
+    <code style='color:#00e676'>https://trading-dashboard-...streamlit.app/?code=<b>YAHAN_WALA_CODE_COPY_KARO</b></code><br><br>
+    2. Sirf <b style='color:#ffd600'>?code= ke baad wala part</b> copy karo (pura lamba string)<br>
+    3. Neeche box mein paste karo aur Submit dabao
+    </div>
+    """, unsafe_allow_html=True)
+
+    manual_code = st.text_input(
+        "Authorization Code paste karo:",
+        placeholder="Upstox redirect URL mein ?code= ke baad wala code",
+        key="manual_auth_code"
+    )
+    if st.button("🔑 Submit Code", type="primary"):
+        code_clean = manual_code.strip()
+        # Agar pura URL paste kiya toh code extract karo
+        if "?code=" in code_clean:
+            code_clean = code_clean.split("?code=")[-1].split("&")[0]
+        elif "code=" in code_clean:
+            code_clean = code_clean.split("code=")[-1].split("&")[0]
+        if code_clean:
+            with st.spinner("Token le raha hoon..."):
+                token = get_access_token(code_clean)
+                if token:
+                    st.session_state.access_token = token
+                    st.rerun()
+                else:
+                    st.error("❌ Token nahi mila — Code expire ho gaya hoga. Dobara login karo.")
+        else:
+            st.warning("⚠️ Code daalo pehle!")
+
     st.stop()
 
 token = st.session_state.access_token
@@ -1664,7 +1723,6 @@ with col1:
     n_dot       = "live-dot-green" if n_positive else "live-dot-red"
     n_border    = "#00e676" if n_positive else "#ff5252"
     n_bg        = "#00e67618" if n_positive else "#ff525218"
-    n_side      = "border-left:4px solid " + ("#00e676" if n_positive else "#ff5252")
     n_price_col = "#00e676" if n_positive else "#ff5252"
     chg_html    = f'<div style="font-size:16px;color:{n_chg_color};font-weight:800;margin-top:3px">{n_arrow} {abs(n_chg):,.2f} ({abs(n_pct):.2f}%)</div>' if n_chg is not None else ""
     st.markdown(f"""
@@ -1684,7 +1742,6 @@ with col2:
     b_dot       = "live-dot-green" if b_positive else "live-dot-red"
     b_border    = "#00e676" if b_positive else "#ff5252"
     b_bg        = "#00e67618" if b_positive else "#ff525218"
-    b_side      = "border-left:4px solid " + ("#00e676" if b_positive else "#ff5252")
     b_price_col = "#00e676" if b_positive else "#ff5252"
     bchg_html   = f'<div style="font-size:16px;color:{b_chg_color};font-weight:800;margin-top:3px">{b_arrow} {abs(bn_chg):,.2f} ({abs(bn_pct):.2f}%)</div>' if bn_chg is not None else ""
     st.markdown(f"""
@@ -2070,12 +2127,6 @@ for tab, instrument, name, spot in [
 
         st.markdown("---")
 
-        st.markdown("---")
-
-# ══════════════════════════════════════════════════════════════
-# FII / DII
-
-
         # ── FAIR VALUE TABLE ──────────────────────────────────
         st.markdown('<div class="sec-header" style="border-left:3px solid #60a5fa">💎 Fair Value — ATM ± 5 Strikes</div>', unsafe_allow_html=True)
         fv_df = result["fair_value_df"]
@@ -2154,8 +2205,7 @@ for tab, instrument, name, spot in [
                     .map(clr_neutral,  subset=["Call LTP","Call FV","Put LTP","Put FV","Straddle"])
                     .map(clr_strike,   subset=["Strike"])
                     .map(clr_status,   subset=["C Status","P Status"])
-                    .map(clr_diff,     subset=["C Diff","P Diff"]),
-                width="stretch", hide_index=True)
+                    .map(clr_diff,     subset=["C Diff","P Diff"]), use_container_width=True, hide_index=True)
 
             st.markdown("""<div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;font-size:12px">
               <span style="color:#ff5252;font-weight:bold">🔴 MEHNGA = Costly (avoid buying)</span>
@@ -2269,7 +2319,7 @@ for tab, instrument, name, spot in [
                                tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
                     bargap=0.15,
                 )
-                st.plotly_chart(fig_oi, width="stretch")
+                st.plotly_chart(fig_oi, use_container_width=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
@@ -2298,10 +2348,6 @@ for tab, instrument, name, spot in [
                     elif oi_chg < -100 and price > 0:
                         return "🟡 Short Cover" if option_type == "put" else "🟠 Long Unwind"
                     return "—"
-
-                # Writer/Buyer detection — Price direction + OI Change
-                price_up   = spot and result.get("prev_spot") and spot > result.get("prev_spot", spot)
-                price_down = spot and result.get("prev_spot") and spot < result.get("prev_spot", spot)
 
                 def get_writer_buyer(oi_chg, option_type, spot_chg):
                     """
@@ -2374,8 +2420,7 @@ for tab, instrument, name, spot in [
                     return ""
 
                 st.dataframe(oi_table.style.apply(style_oi_row, axis=1)
-                             .map(color_chg, subset=["Call OI Chg","Put OI Chg","📊 Call Who","📊 Put Who"]),
-                             width="stretch", hide_index=True)
+                             .map(color_chg, subset=["Call OI Chg","Put OI Chg","📊 Call Who","📊 Put Who"]), use_container_width=True, hide_index=True)
                 st.markdown("""<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
                   <span style="color:#ff6666">🔴 Max Call OI = Resistance</span>
                   <span style="color:#00e676">🟢 Max Put OI = Support</span>
@@ -2497,9 +2542,6 @@ for tab, instrument, name, spot in [
                 else:
                     st.info("⏳ Day range data market hours mein aayega")
 
-                # ══════════════════════════════════════════════
-                # UNIFIED WRITER ACTIVITY PANEL
-                # ══════════════════════════════════════════════
 st.markdown("---")
 st.markdown('<div class="sec-header" style="border-left:3px solid #60a5fa">🏦 FII / DII Activity</div>', unsafe_allow_html=True)
 
