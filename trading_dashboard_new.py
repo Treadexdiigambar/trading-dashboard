@@ -906,7 +906,23 @@ def get_all_expiries(token, instrument):
         exp_resp = requests.get("https://api.upstox.com/v2/option/contract",
             params={"instrument_key": instrument}, headers=headers, timeout=10)
         if exp_resp.status_code == 401: handle_401()
-        if exp_resp.status_code != 200: return []
+        if exp_resp.status_code != 200:
+            # BSE Sensex ke liye alternate key try karo
+            if "BSE_INDEX" in instrument:
+                for alt_key in ["BSE_INDEX|Sensex", "BSE_INDEX|SENSEX50"]:
+                    exp_resp2 = requests.get("https://api.upstox.com/v2/option/contract",
+                        params={"instrument_key": alt_key}, headers=headers, timeout=10)
+                    if exp_resp2.status_code == 200:
+                        raw2 = exp_resp2.json().get("data", [])
+                        expiries2 = []
+                        for e in raw2:
+                            exp = e.get("expiry") or e.get("expiry_date") or (e if isinstance(e, str) else None)
+                            if exp and exp not in expiries2:
+                                expiries2.append(exp)
+                        if expiries2:
+                            print(f"[INFO] Sensex expiries found with key: {alt_key}")
+                            return sorted(expiries2)
+            return []
         raw = exp_resp.json().get("data", [])
         expiries = []
         for e in raw:
@@ -929,7 +945,15 @@ def get_option_chain(token, instrument, selected_expiry=None, all_exp=None):
             params={"instrument_key": instrument, "expiry_date": expiry}, headers=headers, timeout=12)
         if chain.status_code == 401: handle_401()
         if chain.status_code != 200:
-            print(f"[WARN] get_option_chain: status {chain.status_code}")
+            print(f"[WARN] get_option_chain: status {chain.status_code} for {instrument}")
+            # BSE_INDEX|SENSEX ke liye alternate key try karo
+            if "BSE_INDEX" in instrument:
+                alt_instrument = "BSE_INDEX|Sensex"
+                print(f"[INFO] Trying alternate key: {alt_instrument}")
+                chain2 = requests.get("https://api.upstox.com/v2/option/chain",
+                    params={"instrument_key": alt_instrument, "expiry_date": expiry}, headers=headers, timeout=12)
+                if chain2.status_code == 200:
+                    return chain2.json().get("data", []), expiry
             return None, expiry
         return chain.json().get("data", []), expiry
     except Exception as e:
@@ -1080,7 +1104,7 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
     if curr_oi and now_ist.hour >= 15 and now_ist.minute >= 15:
         try:
             save_daily_oi(
-                instrument_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX"),
+                instrument_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 55000 else "SENSEX"),
                 strike_data     = curr_oi,
                 spot            = spot_price,
                 pcr             = total_put_oi / total_call_oi if total_call_oi > 0 else 0,
@@ -1802,7 +1826,7 @@ st.markdown("---")
 
 tab1, tab2, tab3 = st.tabs(["📊 NIFTY Analysis", "🏦 BANK NIFTY Analysis", "📈 SENSEX Analysis"])
 
-# ── SENSEX Tab — dedicated section (BSE pe options nahi hote) ──
+# ── All 3 tabs — Nifty, Bank Nifty, Sensex (options chain with full analysis) ──
 for tab, instrument, name, spot in [
     (tab1, "NSE_INDEX|Nifty 50",   "NIFTY",      nifty_price),
     (tab2, "NSE_INDEX|Nifty Bank",  "BANK NIFTY", banknifty_price),
@@ -1811,7 +1835,7 @@ for tab, instrument, name, spot in [
     with tab:
 
         # ── Tab specific header ────────────────────────────
-        tab_icon  = "📊" if name == "NIFTY" else ("🏦" if name == "BANK NIFTY" else "📈")
+        tab_icon  = "📊" if name == "NIFTY" else ("🏦" if name == "BANK NIFTY" else "🔶")
         tab_color = "#00bfff" if name == "NIFTY" else ("#a78bfa" if name == "BANK NIFTY" else "#ff9500")
         tab_price = f"₹{spot:,.2f}" if spot else "Loading..."
         tab_chg   = n_chg  if name == "NIFTY" else (bn_chg if name == "BANK NIFTY" else sx_chg)
