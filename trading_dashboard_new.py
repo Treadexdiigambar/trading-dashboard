@@ -2205,43 +2205,64 @@ for tab, instrument, name, spot in [
                     "Straddle": f"{straddle:.1f}",
                 })
 
-            fv_tbl = pd.DataFrame(fv_rows)
+            # ── Custom HTML Table — reliable dark theme rendering ──
+            def get_status_html(d):
+                if d > 2:   return f'<span style="color:#ff5252;font-weight:800">🔴 MEHNGA</span>'
+                elif d < -2: return f'<span style="color:#00e676;font-weight:800">🟢 SASTA</span>'
+                else:        return f'<span style="color:#6495b8">⚪ FAIR</span>'
 
-            def style_fv(row):
-                if "⭐" in str(row["Strike"]):
-                    return ["background-color:#1a1500;font-weight:bold;color:#ffd600;border-left:3px solid #ffd600"] * len(row)
-                return ["background-color:#060e1a;color:#90b8d8"] * len(row)
+            def get_diff_html(d):
+                col = "#ff5252" if d > 2 else ("#00e676" if d < -2 else "#6495b8")
+                return f'<span style="color:{col};font-weight:700">{d:+.1f}</span>'
 
-            def clr_status(v):
-                if "MEHNGA" in str(v): return "color:#ff5252;font-weight:800;font-size:14px"
-                if "SASTA"  in str(v): return "color:#00e676;font-weight:800;font-size:14px"
-                return "color:#6495b8;font-size:13px"
+            fv_html = """
+            <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2)">
+            <table style="width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px">
+            <thead>
+              <tr style="background:#0a1525;border-bottom:1px solid rgba(29,78,216,0.25)">
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Call LTP</th>
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Call FV</th>
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">C Diff</th>
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">C Status</th>
+                <th style="padding:8px 10px;color:#ffd600;font-size:10px;letter-spacing:1px;text-align:center">Strike</th>
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Put LTP</th>
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Put FV</th>
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">P Diff</th>
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">P Status</th>
+                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Straddle</th>
+              </tr>
+            </thead>
+            <tbody>"""
 
-            def clr_diff(v):
+            for r in fv_rows:
+                s       = r["Strike"]
+                is_atm  = "⭐" in str(s)
+                row_bg  = "background:#1a1500;border-left:3px solid #ffd600" if is_atm else "background:#060e1a"
+                row_bg += ";border-bottom:1px solid rgba(29,78,216,0.08)"
+                s_disp  = f'<span style="color:#ffd600;font-weight:900;font-size:13px">{s}</span>' if is_atm else f'<span style="color:#60a5fa;font-weight:700">{s}</span>'
                 try:
-                    n = float(str(v).replace("+",""))
-                    if n > 2:  return "color:#ff5252;font-weight:700"
-                    if n < -2: return "color:#00e676;font-weight:700"
-                except ValueError:
-                    pass
-                return "color:#6495b8"
+                    c_d = float(str(r["C Diff"]).replace("+",""))
+                    p_d = float(str(r["P Diff"]).replace("+",""))
+                except:
+                    c_d = p_d = 0
+                fv_html += f"""
+                <tr style="{row_bg}">
+                  <td style="padding:7px 10px;color:#90b8d8;text-align:center">{r["Call LTP"]}</td>
+                  <td style="padding:7px 10px;color:#6495b8;text-align:center">{r["Call FV"]}</td>
+                  <td style="padding:7px 10px;text-align:center">{get_diff_html(c_d)}</td>
+                  <td style="padding:7px 10px;text-align:center">{get_status_html(c_d)}</td>
+                  <td style="padding:7px 10px;text-align:center">{s_disp}</td>
+                  <td style="padding:7px 10px;color:#90b8d8;text-align:center">{r["Put LTP"]}</td>
+                  <td style="padding:7px 10px;color:#6495b8;text-align:center">{r["Put FV"]}</td>
+                  <td style="padding:7px 10px;text-align:center">{get_diff_html(p_d)}</td>
+                  <td style="padding:7px 10px;text-align:center">{get_status_html(p_d)}</td>
+                  <td style="padding:7px 10px;color:#90b8d8;text-align:center">{r["Straddle"]}</td>
+                </tr>"""
 
-            def clr_neutral(v):
-                return "color:#90b8d8;font-size:14px;background-color:#060e1a"
+            fv_html += "</tbody></table></div>"
+            st.markdown(fv_html, unsafe_allow_html=True)
 
-            def clr_strike(v):
-                if "⭐" in str(v): return "color:#ffd600;font-weight:800;font-size:15px;background-color:#1a1500"
-                return "color:#60a5fa;font-size:14px;font-weight:600;background-color:#060e1a"
-
-            st.dataframe(
-                fv_tbl.style
-                    .apply(style_fv, axis=1)
-                    .map(clr_neutral,  subset=["Call LTP","Call FV","Put LTP","Put FV","Straddle"])
-                    .map(clr_strike,   subset=["Strike"])
-                    .map(clr_status,   subset=["C Status","P Status"])
-                    .map(clr_diff,     subset=["C Diff","P Diff"]), use_container_width=True, hide_index=True)
-
-            st.markdown("""<div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;font-size:12px">
+            st.markdown("""<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;font-size:12px">
               <span style="color:#ff5252;font-weight:bold">🔴 MEHNGA = Costly (avoid buying)</span>
               <span style="color:#00e676;font-weight:bold">🟢 SASTA = Cheap (buy opportunity)</span>
               <span style="color:#90b8d8">⚪ FAIR = Sahi price</span>
@@ -2453,8 +2474,74 @@ for tab, instrument, name, spot in [
                         elif "Unwind"  in val:  return "color:#ff5252"
                     return ""
 
-                st.dataframe(oi_table.style.apply(style_oi_row, axis=1)
-                             .map(color_chg, subset=["Call OI Chg","Put OI Chg","📊 Call Who","📊 Put Who"]), use_container_width=True, hide_index=True)
+                # ── Custom HTML OI Table ─────────────────────
+                def who_color(v):
+                    if "Writers" in str(v): return "#a78bfa"
+                    if "Buyers"  in str(v): return "#ff8c00"
+                    if "Exit"    in str(v): return "#6495b8"
+                    if "Unwind"  in str(v): return "#ff5252"
+                    return "#6495b8"
+
+                def chg_color(v):
+                    try:
+                        n = int(str(v).replace("+","").replace(",",""))
+                        return "#00e676" if n > 0 else ("#ff5252" if n < 0 else "#6495b8")
+                    except: return "#6495b8"
+
+                def sig_color(v):
+                    if "Long Build" in str(v): return "#00e676"
+                    if "Short Build" in str(v): return "#ff5252"
+                    if "Unwind" in str(v): return "#ff8c00"
+                    if "Cover" in str(v): return "#ffd600"
+                    return "#6495b8"
+
+                oi_html = """
+                <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2);margin-bottom:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:11px;font-family:'JetBrains Mono',monospace">
+                <thead><tr style="background:#0a1525;border-bottom:1px solid rgba(29,78,216,0.25)">
+                  <th style="padding:7px 8px;color:#a78bfa;font-size:9px;letter-spacing:1px">Call Who</th>
+                  <th style="padding:7px 8px;color:#6495b8;font-size:9px;letter-spacing:1px">Call Signal</th>
+                  <th style="padding:7px 8px;color:#ff5252;font-size:9px;letter-spacing:1px">Call OI Chg</th>
+                  <th style="padding:7px 8px;color:#ff5252;font-size:9px;letter-spacing:1px">Call OI</th>
+                  <th style="padding:7px 8px;color:#ffd600;font-size:9px;letter-spacing:1px;text-align:center">Strike</th>
+                  <th style="padding:7px 8px;color:#00e676;font-size:9px;letter-spacing:1px">Put OI</th>
+                  <th style="padding:7px 8px;color:#00e676;font-size:9px;letter-spacing:1px">Put OI Chg</th>
+                  <th style="padding:7px 8px;color:#6495b8;font-size:9px;letter-spacing:1px">Put Signal</th>
+                  <th style="padding:7px 8px;color:#a78bfa;font-size:9px;letter-spacing:1px">Put Who</th>
+                </tr></thead><tbody>"""
+
+                for idx, row in oi_table.iterrows():
+                    raw_row  = oi_raw.loc[idx]
+                    is_atm   = raw_row["Strike"] == atm
+                    is_mc    = raw_row["Call OI"] == max_call_oi
+                    is_mp    = raw_row["Put OI"]  == max_put_oi
+                    row_bg   = "background:#1a1500;border-left:3px solid #ffd600" if is_atm else "background:#060e1a"
+                    row_bg  += ";border-bottom:1px solid rgba(29,78,216,0.07)"
+                    s_val    = raw_row["Strike"]
+                    s_html   = f'<b style="color:#ffd600;font-size:13px">{int(s_val):,}</b>' if is_atm else f'<span style="color:#60a5fa">{int(s_val):,}</span>'
+                    coi_bg   = "background:#7a1010;color:#ff8888;font-weight:700" if is_mc else f"color:#ff5252"
+                    poi_bg   = "background:#0a4020;color:#00e676;font-weight:700" if is_mp else f"color:#00e676"
+                    cchg     = row["Call OI Chg"]
+                    pchg     = row["Put OI Chg"]
+                    cw       = row["📊 Call Who"]
+                    pw       = row["📊 Put Who"]
+                    cs       = row["Call Signal"]
+                    ps       = row["Put Signal"]
+                    oi_html += f"""
+                    <tr style="{row_bg}">
+                      <td style="padding:6px 8px;color:{who_color(cw)};font-weight:600">{cw}</td>
+                      <td style="padding:6px 8px;color:{sig_color(cs)}">{cs}</td>
+                      <td style="padding:6px 8px;color:{chg_color(cchg)};font-weight:700">{cchg}</td>
+                      <td style="padding:6px 8px;{coi_bg}">{row["Call OI"]}</td>
+                      <td style="padding:6px 8px;text-align:center">{s_html}</td>
+                      <td style="padding:6px 8px;{poi_bg}">{row["Put OI"]}</td>
+                      <td style="padding:6px 8px;color:{chg_color(pchg)};font-weight:700">{pchg}</td>
+                      <td style="padding:6px 8px;color:{sig_color(ps)}">{ps}</td>
+                      <td style="padding:6px 8px;color:{who_color(pw)};font-weight:600">{pw}</td>
+                    </tr>"""
+
+                oi_html += "</tbody></table></div>"
+                st.markdown(oi_html, unsafe_allow_html=True)
                 st.markdown("""<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
                   <span style="color:#ff6666">🔴 Max Call OI = Resistance</span>
                   <span style="color:#00e676">🟢 Max Put OI = Support</span>
