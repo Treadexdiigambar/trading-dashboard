@@ -8,6 +8,7 @@ import os
 import csv
 import threading
 import calendar
+import math
 from datetime import datetime, date, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -526,7 +527,19 @@ st.markdown("""
         text-transform: uppercase !important;
         border-bottom: 1px solid rgba(29,78,216,0.2) !important;
     }
-    .stDataFrame tbody tr:hover { background: rgba(29,78,216,0.06) !important; }
+    .stDataFrame tbody tr td {
+        background: #060e1a !important;
+        color: #90b8d8 !important;
+        border-bottom: 1px solid rgba(29,78,216,0.08) !important;
+        font-size: 13px !important;
+    }
+    .stDataFrame tbody tr:nth-child(even) td { background: #0a1525 !important; }
+    .stDataFrame tbody tr:hover td { background: rgba(29,78,216,0.12) !important; }
+    /* Streamlit new dataframe (glide) dark fix */
+    [data-testid="stDataFrame"] { background: #060e1a !important; }
+    [data-testid="stDataFrame"] * { color: #90b8d8 !important; }
+    .dvn-scroller { background: #060e1a !important; }
+    .cell-wrap-text { color: #90b8d8 !important; }
 
     /* ══ INFO / WARNING BOXES ══ */
     .stInfo, .stWarning, .stSuccess, .stError {
@@ -902,37 +915,31 @@ def extract_prev_close(data, instrument):
 
 def get_all_expiries(token, instrument):
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    try:
-        exp_resp = requests.get("https://api.upstox.com/v2/option/contract",
-            params={"instrument_key": instrument}, headers=headers, timeout=10)
-        if exp_resp.status_code == 401: handle_401()
-        if exp_resp.status_code != 200:
-            # BSE Sensex ke liye alternate key try karo
-            if "BSE_INDEX" in instrument:
-                for alt_key in ["BSE_INDEX|Sensex", "BSE_INDEX|SENSEX50"]:
-                    exp_resp2 = requests.get("https://api.upstox.com/v2/option/contract",
-                        params={"instrument_key": alt_key}, headers=headers, timeout=10)
-                    if exp_resp2.status_code == 200:
-                        raw2 = exp_resp2.json().get("data", [])
-                        expiries2 = []
-                        for e in raw2:
-                            exp = e.get("expiry") or e.get("expiry_date") or (e if isinstance(e, str) else None)
-                            if exp and exp not in expiries2:
-                                expiries2.append(exp)
-                        if expiries2:
-                            print(f"[INFO] Sensex expiries found with key: {alt_key}")
-                            return sorted(expiries2)
+    def _fetch_expiries(key):
+        try:
+            resp = requests.get("https://api.upstox.com/v2/option/contract",
+                params={"instrument_key": key}, headers=headers, timeout=10)
+            if resp.status_code == 401: handle_401()
+            if resp.status_code != 200: return []
+            raw = resp.json().get("data", [])
+            expiries = []
+            for e in raw:
+                exp = e.get("expiry") or e.get("expiry_date") or (e if isinstance(e, str) else None)
+                if exp and exp not in expiries:
+                    expiries.append(exp)
+            return sorted(expiries)
+        except Exception as ex:
+            print(f"[WARN] get_all_expiries failed for {key}: {ex}")
             return []
-        raw = exp_resp.json().get("data", [])
-        expiries = []
-        for e in raw:
-            exp = e.get("expiry") or e.get("expiry_date") or (e if isinstance(e, str) else None)
-            if exp and exp not in expiries:
-                expiries.append(exp)
-        return sorted(expiries)
-    except Exception as e:
-        print(f"[WARN] get_all_expiries failed: {e}")
-        return []
+    result = _fetch_expiries(instrument)
+    # BSE Sensex ke liye alternate keys try karo
+    if not result and "BSE_INDEX" in instrument:
+        for alt in ["BSE_INDEX|Sensex", "BSE_INDEX|SENSEX50", "BSE_INDEX|BSX"]:
+            result = _fetch_expiries(alt)
+            if result:
+                print(f"[INFO] Sensex expiries found with: {alt}")
+                break
+    return result
 
 def get_option_chain(token, instrument, selected_expiry=None, all_exp=None):
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
@@ -941,21 +948,25 @@ def get_option_chain(token, instrument, selected_expiry=None, all_exp=None):
             all_exp = get_all_expiries(token, instrument)
         if not all_exp: return None, None
         expiry = selected_expiry if selected_expiry and selected_expiry in all_exp else all_exp[0]
-        chain = requests.get("https://api.upstox.com/v2/option/chain",
-            params={"instrument_key": instrument, "expiry_date": expiry}, headers=headers, timeout=12)
-        if chain.status_code == 401: handle_401()
-        if chain.status_code != 200:
-            print(f"[WARN] get_option_chain: status {chain.status_code} for {instrument}")
-            # BSE_INDEX|SENSEX ke liye alternate key try karo
-            if "BSE_INDEX" in instrument:
-                alt_instrument = "BSE_INDEX|Sensex"
-                print(f"[INFO] Trying alternate key: {alt_instrument}")
-                chain2 = requests.get("https://api.upstox.com/v2/option/chain",
-                    params={"instrument_key": alt_instrument, "expiry_date": expiry}, headers=headers, timeout=12)
-                if chain2.status_code == 200:
-                    return chain2.json().get("data", []), expiry
-            return None, expiry
-        return chain.json().get("data", []), expiry
+        # BSE Sensex ke liye alternate keys try karo
+        keys_to_try = [instrument]
+        if "BSE_INDEX" in instrument:
+            keys_to_try += ["BSE_INDEX|Sensex", "BSE_INDEX|SENSEX50", "BSE_INDEX|BSX"]
+        for key in keys_to_try:
+            try:
+                chain = requests.get("https://api.upstox.com/v2/option/chain",
+                    params={"instrument_key": key, "expiry_date": expiry}, headers=headers, timeout=12)
+                if chain.status_code == 401: handle_401()
+                if chain.status_code == 200:
+                    data = chain.json().get("data", [])
+                    if data:
+                        if key != instrument:
+                            print(f"[INFO] Sensex chain found with key: {key}")
+                        return data, expiry
+                print(f"[WARN] get_option_chain: status {chain.status_code} for {key}")
+            except Exception:
+                continue
+        return None, expiry
     except Exception as e:
         print(f"[WARN] get_option_chain failed: {e}")
         return None, selected_expiry
@@ -1104,7 +1115,7 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
     if curr_oi and now_ist.hour >= 15 and now_ist.minute >= 15:
         try:
             save_daily_oi(
-                instrument_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 55000 else "SENSEX"),
+                instrument_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX"),
                 strike_data     = curr_oi,
                 spot            = spot_price,
                 pcr             = total_put_oi / total_call_oi if total_call_oi > 0 else 0,
@@ -1237,7 +1248,6 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
             fv["Straddle Price"] = fv["Call LTP"] + fv["Put LTP"]
 
             if spot_price:
-                import math
                 from datetime import datetime as dt
 
                 # T = time to expiry
@@ -1652,7 +1662,7 @@ if not ltp_data and not quote_data:
     WiFi/Data check karo aur <b>Refresh</b> dabao.</span>
     </div>""", unsafe_allow_html=True)
     if auto_refresh:
-        time.sleep(10)
+        time.sleep(5)
         st.rerun()
     st.stop()
 
@@ -1826,7 +1836,7 @@ st.markdown("---")
 
 tab1, tab2, tab3 = st.tabs(["📊 NIFTY Analysis", "🏦 BANK NIFTY Analysis", "📈 SENSEX Analysis"])
 
-# ── All 3 tabs — Nifty, Bank Nifty, Sensex (options chain with full analysis) ──
+# ── SENSEX Tab — dedicated section (BSE pe options nahi hote) ──
 for tab, instrument, name, spot in [
     (tab1, "NSE_INDEX|Nifty 50",   "NIFTY",      nifty_price),
     (tab2, "NSE_INDEX|Nifty Bank",  "BANK NIFTY", banknifty_price),
@@ -1835,7 +1845,7 @@ for tab, instrument, name, spot in [
     with tab:
 
         # ── Tab specific header ────────────────────────────
-        tab_icon  = "📊" if name == "NIFTY" else ("🏦" if name == "BANK NIFTY" else "🔶")
+        tab_icon  = "📊" if name == "NIFTY" else ("🏦" if name == "BANK NIFTY" else "📈")
         tab_color = "#00bfff" if name == "NIFTY" else ("#a78bfa" if name == "BANK NIFTY" else "#ff9500")
         tab_price = f"₹{spot:,.2f}" if spot else "Loading..."
         tab_chg   = n_chg  if name == "NIFTY" else (bn_chg if name == "BANK NIFTY" else sx_chg)
@@ -2199,8 +2209,8 @@ for tab, instrument, name, spot in [
 
             def style_fv(row):
                 if "⭐" in str(row["Strike"]):
-                    return ["background-color:#ffd60015;font-weight:bold;color:#ffd600"] * len(row)
-                return [""] * len(row)
+                    return ["background-color:#1a1500;font-weight:bold;color:#ffd600;border-left:3px solid #ffd600"] * len(row)
+                return ["background-color:#060e1a;color:#90b8d8"] * len(row)
 
             def clr_status(v):
                 if "MEHNGA" in str(v): return "color:#ff5252;font-weight:800;font-size:14px"
@@ -2217,11 +2227,11 @@ for tab, instrument, name, spot in [
                 return "color:#6495b8"
 
             def clr_neutral(v):
-                return "color:#64748b;font-size:14px"  # LTP, FV — neutral gray
+                return "color:#90b8d8;font-size:14px;background-color:#060e1a"
 
             def clr_strike(v):
-                if "⭐" in str(v): return "color:#ffd600;font-weight:800;font-size:15px;background-color:#ffd60015"
-                return "color:#90b8d8;font-size:14px"
+                if "⭐" in str(v): return "color:#ffd600;font-weight:800;font-size:15px;background-color:#1a1500"
+                return "color:#60a5fa;font-size:14px;font-weight:600;background-color:#060e1a"
 
             st.dataframe(
                 fv_tbl.style
@@ -2422,14 +2432,14 @@ for tab, instrument, name, spot in [
 
                 def style_oi_row(row):
                     raw    = oi_raw.loc[row.name]
-                    styles = [""] * len(row)
+                    styles = ["background-color:#060e1a;color:#90b8d8"] * len(row)
                     if raw["Strike"] == atm:
-                        styles = ["background-color:#ffd60022;font-weight:bold"] * len(row)
+                        styles = ["background-color:#1a1500;font-weight:bold;color:#ffd600;border-left:3px solid #ffd600"] * len(row)
                     # Call OI col = index 3, Put OI = index 5
                     if raw["Call OI"] == max_call_oi:
-                        styles[3] = "background-color:#ff5252;color:white;font-weight:bold"
+                        styles[3] = "background-color:#7a1010;color:#ff8888;font-weight:bold"
                     if raw["Put OI"] == max_put_oi:
-                        styles[5] = "background-color:#00cc55;color:white;font-weight:bold"
+                        styles[5] = "background-color:#0a4020;color:#00e676;font-weight:bold"
                     return styles
 
                 def color_chg(val):
