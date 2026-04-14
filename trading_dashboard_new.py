@@ -527,19 +527,7 @@ st.markdown("""
         text-transform: uppercase !important;
         border-bottom: 1px solid rgba(29,78,216,0.2) !important;
     }
-    .stDataFrame tbody tr td {
-        background: #060e1a !important;
-        color: #90b8d8 !important;
-        border-bottom: 1px solid rgba(29,78,216,0.08) !important;
-        font-size: 13px !important;
-    }
-    .stDataFrame tbody tr:nth-child(even) td { background: #0a1525 !important; }
-    .stDataFrame tbody tr:hover td { background: rgba(29,78,216,0.12) !important; }
-    /* Streamlit new dataframe (glide) dark fix */
-    [data-testid="stDataFrame"] { background: #060e1a !important; }
-    [data-testid="stDataFrame"] * { color: #90b8d8 !important; }
-    .dvn-scroller { background: #060e1a !important; }
-    .cell-wrap-text { color: #90b8d8 !important; }
+    .stDataFrame tbody tr:hover { background: rgba(29,78,216,0.06) !important; }
 
     /* ══ INFO / WARNING BOXES ══ */
     .stInfo, .stWarning, .stSuccess, .stError {
@@ -598,6 +586,11 @@ for key, val in [
     ("cache_timestamp",  ""),
     ("oi_wall_ticker",   []),   # [{name, resistance, res_oi, support, sup_oi, updated}]
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
+    # ── New Features ──────────────────────────────────────
+    ("price_alerts",     []),   # [{instrument, price, condition, label, triggered}]
+    ("cache_candles",    {}),   # {instrument: candles_list}
+    ("news_cache",       []),   # [{title, desc, time}]
+    ("news_last_fetch",  0),    # timestamp
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -2205,64 +2198,43 @@ for tab, instrument, name, spot in [
                     "Straddle": f"{straddle:.1f}",
                 })
 
-            # ── Custom HTML Table — reliable dark theme rendering ──
-            def get_status_html(d):
-                if d > 2:   return f'<span style="color:#ff5252;font-weight:800">🔴 MEHNGA</span>'
-                elif d < -2: return f'<span style="color:#00e676;font-weight:800">🟢 SASTA</span>'
-                else:        return f'<span style="color:#6495b8">⚪ FAIR</span>'
+            fv_tbl = pd.DataFrame(fv_rows)
 
-            def get_diff_html(d):
-                col = "#ff5252" if d > 2 else ("#00e676" if d < -2 else "#6495b8")
-                return f'<span style="color:{col};font-weight:700">{d:+.1f}</span>'
+            def style_fv(row):
+                if "⭐" in str(row["Strike"]):
+                    return ["background-color:#ffd60015;font-weight:bold;color:#ffd600"] * len(row)
+                return [""] * len(row)
 
-            fv_html = """
-            <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2)">
-            <table style="width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px">
-            <thead>
-              <tr style="background:#0a1525;border-bottom:1px solid rgba(29,78,216,0.25)">
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Call LTP</th>
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Call FV</th>
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">C Diff</th>
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">C Status</th>
-                <th style="padding:8px 10px;color:#ffd600;font-size:10px;letter-spacing:1px;text-align:center">Strike</th>
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Put LTP</th>
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Put FV</th>
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">P Diff</th>
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">P Status</th>
-                <th style="padding:8px 10px;color:#6495b8;font-size:10px;letter-spacing:1px;text-align:center">Straddle</th>
-              </tr>
-            </thead>
-            <tbody>"""
+            def clr_status(v):
+                if "MEHNGA" in str(v): return "color:#ff5252;font-weight:800;font-size:14px"
+                if "SASTA"  in str(v): return "color:#00e676;font-weight:800;font-size:14px"
+                return "color:#6495b8;font-size:13px"
 
-            for r in fv_rows:
-                s       = r["Strike"]
-                is_atm  = "⭐" in str(s)
-                row_bg  = "background:#1a1500;border-left:3px solid #ffd600" if is_atm else "background:#060e1a"
-                row_bg += ";border-bottom:1px solid rgba(29,78,216,0.08)"
-                s_disp  = f'<span style="color:#ffd600;font-weight:900;font-size:13px">{s}</span>' if is_atm else f'<span style="color:#60a5fa;font-weight:700">{s}</span>'
+            def clr_diff(v):
                 try:
-                    c_d = float(str(r["C Diff"]).replace("+",""))
-                    p_d = float(str(r["P Diff"]).replace("+",""))
-                except:
-                    c_d = p_d = 0
-                fv_html += f"""
-                <tr style="{row_bg}">
-                  <td style="padding:7px 10px;color:#90b8d8;text-align:center">{r["Call LTP"]}</td>
-                  <td style="padding:7px 10px;color:#6495b8;text-align:center">{r["Call FV"]}</td>
-                  <td style="padding:7px 10px;text-align:center">{get_diff_html(c_d)}</td>
-                  <td style="padding:7px 10px;text-align:center">{get_status_html(c_d)}</td>
-                  <td style="padding:7px 10px;text-align:center">{s_disp}</td>
-                  <td style="padding:7px 10px;color:#90b8d8;text-align:center">{r["Put LTP"]}</td>
-                  <td style="padding:7px 10px;color:#6495b8;text-align:center">{r["Put FV"]}</td>
-                  <td style="padding:7px 10px;text-align:center">{get_diff_html(p_d)}</td>
-                  <td style="padding:7px 10px;text-align:center">{get_status_html(p_d)}</td>
-                  <td style="padding:7px 10px;color:#90b8d8;text-align:center">{r["Straddle"]}</td>
-                </tr>"""
+                    n = float(str(v).replace("+",""))
+                    if n > 2:  return "color:#ff5252;font-weight:700"
+                    if n < -2: return "color:#00e676;font-weight:700"
+                except ValueError:
+                    pass
+                return "color:#6495b8"
 
-            fv_html += "</tbody></table></div>"
-            st.markdown(fv_html, unsafe_allow_html=True)
+            def clr_neutral(v):
+                return "color:#64748b;font-size:14px"  # LTP, FV — neutral gray
 
-            st.markdown("""<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;font-size:12px">
+            def clr_strike(v):
+                if "⭐" in str(v): return "color:#ffd600;font-weight:800;font-size:15px;background-color:#ffd60015"
+                return "color:#90b8d8;font-size:14px"
+
+            st.dataframe(
+                fv_tbl.style
+                    .apply(style_fv, axis=1)
+                    .map(clr_neutral,  subset=["Call LTP","Call FV","Put LTP","Put FV","Straddle"])
+                    .map(clr_strike,   subset=["Strike"])
+                    .map(clr_status,   subset=["C Status","P Status"])
+                    .map(clr_diff,     subset=["C Diff","P Diff"]), use_container_width=True, hide_index=True)
+
+            st.markdown("""<div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;font-size:12px">
               <span style="color:#ff5252;font-weight:bold">🔴 MEHNGA = Costly (avoid buying)</span>
               <span style="color:#00e676;font-weight:bold">🟢 SASTA = Cheap (buy opportunity)</span>
               <span style="color:#90b8d8">⚪ FAIR = Sahi price</span>
@@ -2345,10 +2317,91 @@ for tab, instrument, name, spot in [
                       <span style="color:#6495b8;font-size:11px">{active_label}</span>
                     </div>""", unsafe_allow_html=True)
 
+                # ── Chart toggle: OI vs OI Change ─────────────
+                chart_mode = st.radio(
+                    "📊 Chart Mode:",
+                    ["OI (Total)", "OI Change (Increase/Decrease)"],
+                    horizontal=True,
+                    key=f"chart_mode_{name}"
+                )
+
                 # OI Chart
                 fig_oi = go.Figure()
-                fig_oi.add_trace(go.Bar(x=df_d["Strike"], y=df_d["Call OI"], name="Call OI (Resistance)", marker_color="#ff5252", marker_opacity=0.85))
-                fig_oi.add_trace(go.Bar(x=df_d["Strike"], y=df_d["Put OI"],  name="Put OI (Support)",    marker_color="#00e676", marker_opacity=0.85))
+
+                if chart_mode == "OI (Total)":
+                    # ── Original OI bars ──────────────────────
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=df_d["Call OI"],
+                        name="Call OI (Resistance)",
+                        marker_color="#ff5252", marker_opacity=0.85
+                    ))
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=df_d["Put OI"],
+                        name="Put OI (Support)",
+                        marker_color="#00e676", marker_opacity=0.85
+                    ))
+                    chart_title = f"<b>{name} OI — Big Players Position</b>"
+                    y_title = "Open Interest"
+
+                else:
+                    # ── OI Change — Increase/Decrease alag alag ──
+                    # Call OI Increase (positive change) — solid red
+                    call_inc = df_d["Call OI Change"].clip(lower=0)
+                    # Call OI Decrease (negative change) — hatched/light red
+                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
+                    # Put OI Increase (positive change) — solid green
+                    put_inc  = df_d["Put OI Change"].clip(lower=0)
+                    # Put OI Decrease (negative change) — hatched/light green
+                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
+
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=call_inc,
+                        name="Call OI Increase ▲",
+                        marker=dict(color="#ff5252", opacity=0.9),
+                        hovertemplate="Strike: %{x}<br>Call Increase: +%{y:,.0f}<extra></extra>"
+                    ))
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=call_dec,
+                        name="Call OI Decrease ▼",
+                        marker=dict(color="#ff5252", opacity=0.3,
+                                    pattern=dict(shape="/", fgcolor="#ff5252", bgcolor="rgba(255,82,82,0.1)")),
+                        hovertemplate="Strike: %{x}<br>Call Decrease: -%{y:,.0f}<extra></extra>"
+                    ))
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=put_inc,
+                        name="Put OI Increase ▲",
+                        marker=dict(color="#00e676", opacity=0.9),
+                        hovertemplate="Strike: %{x}<br>Put Increase: +%{y:,.0f}<extra></extra>"
+                    ))
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=put_dec,
+                        name="Put OI Decrease ▼",
+                        marker=dict(color="#00e676", opacity=0.3,
+                                    pattern=dict(shape="\\", fgcolor="#00e676", bgcolor="rgba(0,230,118,0.1)")),
+                        hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
+                    ))
+
+                    # Net OI change summary
+                    net_call = int(df_d["Call OI Change"].sum())
+                    net_put  = int(df_d["Put OI Change"].sum())
+                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
+                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
+                    st.markdown(f"""
+                    <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
+                      <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
+                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
+                      </div>
+                      <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
+                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
+                    y_title = "OI Change"
+
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
                                  annotation_text=f"ATM {atm}", annotation_font_color="#ffd600")
                 if spot:
@@ -2358,23 +2411,32 @@ for tab, instrument, name, spot in [
                     fig_oi.add_vline(x=max_pain, line_width=2, line_dash="longdash", line_color="#ff9500",
                                      annotation_text=f"⭐ Max Pain {max_pain}", annotation_font_color="#ff9500")
                 fig_oi.update_layout(
-                    title=dict(text=f"<b>{name} OI — Big Players Position</b>", font=dict(size=14, color="#90b8d8", family="Inter")),
+                    title=dict(text=chart_title, font=dict(size=14, color="#90b8d8", family="Inter")),
                     barmode="group",
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="#060e1a",
                     font=dict(color="#7aa0be", family="Inter"),
-                    height=420,
+                    height=440,
                     margin=dict(l=10, r=10, t=50, b=10),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
                                 font=dict(size=11, color="#90b8d8"),
                                 bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(title="Strike Price", gridcolor="rgba(29,78,216,0.1)", zeroline=False,
                                tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
-                    yaxis=dict(title="Open Interest", gridcolor="rgba(29,78,216,0.1)", zeroline=False,
+                    yaxis=dict(title=y_title, gridcolor="rgba(29,78,216,0.1)", zeroline=False,
                                tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
+
+                # Legend explanation
+                if chart_mode == "OI Change (Increase/Decrease)":
+                    st.markdown("""<div style="display:flex;gap:16px;margin-top:4px;font-size:11px;flex-wrap:wrap">
+                      <span>🔴 <b>Solid Red</b> = Call OI Badha (Bears position add kar rahe)</span>
+                      <span>🔴 <b>Light Red</b> = Call OI Ghata (Bears exit kar rahe)</span>
+                      <span>🟢 <b>Solid Green</b> = Put OI Badha (Bulls position add kar rahe)</span>
+                      <span>🟢 <b>Light Green</b> = Put OI Ghata (Bulls exit kar rahe)</span>
+                    </div>""", unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
@@ -2453,14 +2515,14 @@ for tab, instrument, name, spot in [
 
                 def style_oi_row(row):
                     raw    = oi_raw.loc[row.name]
-                    styles = ["background-color:#060e1a;color:#90b8d8"] * len(row)
+                    styles = [""] * len(row)
                     if raw["Strike"] == atm:
-                        styles = ["background-color:#1a1500;font-weight:bold;color:#ffd600;border-left:3px solid #ffd600"] * len(row)
+                        styles = ["background-color:#ffd60022;font-weight:bold"] * len(row)
                     # Call OI col = index 3, Put OI = index 5
                     if raw["Call OI"] == max_call_oi:
-                        styles[3] = "background-color:#7a1010;color:#ff8888;font-weight:bold"
+                        styles[3] = "background-color:#ff5252;color:white;font-weight:bold"
                     if raw["Put OI"] == max_put_oi:
-                        styles[5] = "background-color:#0a4020;color:#00e676;font-weight:bold"
+                        styles[5] = "background-color:#00cc55;color:white;font-weight:bold"
                     return styles
 
                 def color_chg(val):
@@ -2474,74 +2536,8 @@ for tab, instrument, name, spot in [
                         elif "Unwind"  in val:  return "color:#ff5252"
                     return ""
 
-                # ── Custom HTML OI Table ─────────────────────
-                def who_color(v):
-                    if "Writers" in str(v): return "#a78bfa"
-                    if "Buyers"  in str(v): return "#ff8c00"
-                    if "Exit"    in str(v): return "#6495b8"
-                    if "Unwind"  in str(v): return "#ff5252"
-                    return "#6495b8"
-
-                def chg_color(v):
-                    try:
-                        n = int(str(v).replace("+","").replace(",",""))
-                        return "#00e676" if n > 0 else ("#ff5252" if n < 0 else "#6495b8")
-                    except: return "#6495b8"
-
-                def sig_color(v):
-                    if "Long Build" in str(v): return "#00e676"
-                    if "Short Build" in str(v): return "#ff5252"
-                    if "Unwind" in str(v): return "#ff8c00"
-                    if "Cover" in str(v): return "#ffd600"
-                    return "#6495b8"
-
-                oi_html = """
-                <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2);margin-bottom:8px">
-                <table style="width:100%;border-collapse:collapse;font-size:11px;font-family:'JetBrains Mono',monospace">
-                <thead><tr style="background:#0a1525;border-bottom:1px solid rgba(29,78,216,0.25)">
-                  <th style="padding:7px 8px;color:#a78bfa;font-size:9px;letter-spacing:1px">Call Who</th>
-                  <th style="padding:7px 8px;color:#6495b8;font-size:9px;letter-spacing:1px">Call Signal</th>
-                  <th style="padding:7px 8px;color:#ff5252;font-size:9px;letter-spacing:1px">Call OI Chg</th>
-                  <th style="padding:7px 8px;color:#ff5252;font-size:9px;letter-spacing:1px">Call OI</th>
-                  <th style="padding:7px 8px;color:#ffd600;font-size:9px;letter-spacing:1px;text-align:center">Strike</th>
-                  <th style="padding:7px 8px;color:#00e676;font-size:9px;letter-spacing:1px">Put OI</th>
-                  <th style="padding:7px 8px;color:#00e676;font-size:9px;letter-spacing:1px">Put OI Chg</th>
-                  <th style="padding:7px 8px;color:#6495b8;font-size:9px;letter-spacing:1px">Put Signal</th>
-                  <th style="padding:7px 8px;color:#a78bfa;font-size:9px;letter-spacing:1px">Put Who</th>
-                </tr></thead><tbody>"""
-
-                for idx, row in oi_table.iterrows():
-                    raw_row  = oi_raw.loc[idx]
-                    is_atm   = raw_row["Strike"] == atm
-                    is_mc    = raw_row["Call OI"] == max_call_oi
-                    is_mp    = raw_row["Put OI"]  == max_put_oi
-                    row_bg   = "background:#1a1500;border-left:3px solid #ffd600" if is_atm else "background:#060e1a"
-                    row_bg  += ";border-bottom:1px solid rgba(29,78,216,0.07)"
-                    s_val    = raw_row["Strike"]
-                    s_html   = f'<b style="color:#ffd600;font-size:13px">{int(s_val):,}</b>' if is_atm else f'<span style="color:#60a5fa">{int(s_val):,}</span>'
-                    coi_bg   = "background:#7a1010;color:#ff8888;font-weight:700" if is_mc else f"color:#ff5252"
-                    poi_bg   = "background:#0a4020;color:#00e676;font-weight:700" if is_mp else f"color:#00e676"
-                    cchg     = row["Call OI Chg"]
-                    pchg     = row["Put OI Chg"]
-                    cw       = row["📊 Call Who"]
-                    pw       = row["📊 Put Who"]
-                    cs       = row["Call Signal"]
-                    ps       = row["Put Signal"]
-                    oi_html += f"""
-                    <tr style="{row_bg}">
-                      <td style="padding:6px 8px;color:{who_color(cw)};font-weight:600">{cw}</td>
-                      <td style="padding:6px 8px;color:{sig_color(cs)}">{cs}</td>
-                      <td style="padding:6px 8px;color:{chg_color(cchg)};font-weight:700">{cchg}</td>
-                      <td style="padding:6px 8px;{coi_bg}">{row["Call OI"]}</td>
-                      <td style="padding:6px 8px;text-align:center">{s_html}</td>
-                      <td style="padding:6px 8px;{poi_bg}">{row["Put OI"]}</td>
-                      <td style="padding:6px 8px;color:{chg_color(pchg)};font-weight:700">{pchg}</td>
-                      <td style="padding:6px 8px;color:{sig_color(ps)}">{ps}</td>
-                      <td style="padding:6px 8px;color:{who_color(pw)};font-weight:600">{pw}</td>
-                    </tr>"""
-
-                oi_html += "</tbody></table></div>"
-                st.markdown(oi_html, unsafe_allow_html=True)
+                st.dataframe(oi_table.style.apply(style_oi_row, axis=1)
+                             .map(color_chg, subset=["Call OI Chg","Put OI Chg","📊 Call Who","📊 Put Who"]), use_container_width=True, hide_index=True)
                 st.markdown("""<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
                   <span style="color:#ff6666">🔴 Max Call OI = Resistance</span>
                   <span style="color:#00e676">🟢 Max Put OI = Support</span>
@@ -2727,6 +2723,431 @@ if fii_dii:
         st.warning(f"FII/DII display error: {e}")
 else:
     st.markdown('<div style="background:#ff525222;border:1.5px solid #ff5252;border-radius:8px;padding:14px;font-size:13px;color:#ff8888">❌ FII/DII data fetch nahi hua — Refresh try karo.</div>', unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ══════════════════════════════════════════════════════════════
+# 📊 FEATURE 1: INTRADAY CANDLESTICK CHART
+# ══════════════════════════════════════════════════════════════
+st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📊 Intraday Chart</div>', unsafe_allow_html=True)
+
+chart_col1, chart_col2, chart_col3 = st.columns([3, 3, 2])
+with chart_col1:
+    chart_instrument = st.selectbox(
+        "Instrument",
+        ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"],
+        format_func=lambda x: {"NSE_INDEX|Nifty 50": "Nifty 50", "NSE_INDEX|Nifty Bank": "Bank Nifty", "BSE_INDEX|SENSEX": "Sensex"}.get(x, x),
+        key="chart_instr"
+    )
+with chart_col2:
+    chart_interval = st.selectbox(
+        "Timeframe",
+        ["5minute", "15minute", "30minute", "1hour"],
+        format_func=lambda x: {"5minute": "5 Min", "15minute": "15 Min", "30minute": "30 Min", "1hour": "1 Hour"}.get(x, x),
+        index=1,
+        key="chart_tf"
+    )
+with chart_col3:
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    fetch_chart = st.button("📈 Chart Load Karo", key="btn_chart")
+
+if fetch_chart or st.session_state.cache_candles.get(chart_instrument):
+    if fetch_chart:
+        with st.spinner("Candles fetch ho rahi hain..."):
+            candles = safe_api_call(get_intraday_candles, token, chart_instrument, chart_interval, fallback=[])
+            if candles:
+                st.session_state.cache_candles[chart_instrument] = candles
+    candles = st.session_state.cache_candles.get(chart_instrument, [])
+    if candles:
+        try:
+            import plotly.graph_objects as go
+            timestamps = [c[0] for c in candles]
+            opens      = [c[1] for c in candles]
+            highs      = [c[2] for c in candles]
+            lows       = [c[3] for c in candles]
+            closes     = [c[4] for c in candles]
+            volumes    = [c[5] if len(c) > 5 else 0 for c in candles]
+
+            # VWAP calculate karo
+            vwap, atr, _ = calculate_vwap_atr(candles)
+
+            fig = go.Figure()
+
+            # Candlestick
+            fig.add_trace(go.Candlestick(
+                x=timestamps,
+                open=opens, high=highs, low=lows, close=closes,
+                name="Price",
+                increasing_line_color="#00e676",
+                decreasing_line_color="#ff5252",
+                increasing_fillcolor="#00e67640",
+                decreasing_fillcolor="#ff525240",
+            ))
+
+            # VWAP line
+            if vwap:
+                fig.add_hline(
+                    y=vwap, line_dash="dash",
+                    line_color="#ffd600", line_width=1.5,
+                    annotation_text=f"VWAP {vwap:,.0f}",
+                    annotation_font_color="#ffd600",
+                    annotation_font_size=11,
+                )
+
+            # ATR info
+            title_extra = f" | ATR: {atr:,.1f}" if atr else ""
+
+            fig.update_layout(
+                paper_bgcolor="#060a12",
+                plot_bgcolor="#060a12",
+                font=dict(color="#8ab8d8", size=11),
+                xaxis=dict(
+                    gridcolor="rgba(29,78,216,0.08)",
+                    showgrid=True,
+                    rangeslider=dict(visible=False),
+                    color="#4e7a96",
+                ),
+                yaxis=dict(
+                    gridcolor="rgba(29,78,216,0.08)",
+                    showgrid=True,
+                    color="#4e7a96",
+                    side="right",
+                ),
+                margin=dict(l=10, r=60, t=40, b=10),
+                height=380,
+                showlegend=False,
+                title=dict(
+                    text=f"Intraday — {chart_interval.replace('minute',' Min').replace('hour',' Hr')}{title_extra}",
+                    font=dict(color="#c8dff5", size=13),
+                    x=0.01,
+                ),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Volume bar chart
+            vol_colors = ["#00e67660" if closes[i] >= opens[i] else "#ff525260" for i in range(len(closes))]
+            fig_vol = go.Figure(go.Bar(x=timestamps, y=volumes, marker_color=vol_colors, name="Volume"))
+            fig_vol.update_layout(
+                paper_bgcolor="#060a12", plot_bgcolor="#060a12",
+                font=dict(color="#4e7a96", size=10),
+                height=100, margin=dict(l=10, r=60, t=0, b=10),
+                showlegend=False,
+                xaxis=dict(showgrid=False, color="#4e7a96", rangeslider=dict(visible=False)),
+                yaxis=dict(showgrid=False, color="#4e7a96", side="right"),
+            )
+            st.plotly_chart(fig_vol, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Chart render error: {e}")
+    else:
+        st.info("⏳ Candles nahi mili — Market hours mein try karo ya instrument check karo.")
+else:
+    st.markdown('<div style="background:#0f1e3580;border:1px solid rgba(167,139,250,0.2);border-radius:10px;padding:20px;text-align:center;color:#6495b8;font-size:13px">📊 Instrument aur Timeframe select karo, phir <b style="color:#a78bfa">Chart Load Karo</b> button dabao</div>', unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ══════════════════════════════════════════════════════════════
+# ⚡ FEATURE 2: CUSTOM PRICE ALERT SYSTEM
+# ══════════════════════════════════════════════════════════════
+st.markdown('<div class="sec-header" style="border-left:3px solid #ffd600">⚡ Custom Price Alerts</div>', unsafe_allow_html=True)
+
+# Alert add karne ka form
+with st.expander("➕ Naya Price Alert Add Karo", expanded=False):
+    al_c1, al_c2, al_c3, al_c4 = st.columns([3, 2, 2, 2])
+    with al_c1:
+        al_instrument = st.selectbox(
+            "Instrument",
+            ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"],
+            format_func=lambda x: {"NSE_INDEX|Nifty 50": "Nifty 50", "NSE_INDEX|Nifty Bank": "Bank Nifty", "BSE_INDEX|SENSEX": "Sensex"}.get(x, x),
+            key="al_instr"
+        )
+    with al_c2:
+        al_condition = st.selectbox("Condition", ["≥ (Upar jayega)", "≤ (Neeche aayega)"], key="al_cond")
+    with al_c3:
+        al_price = st.number_input("Target Price", min_value=0.0, step=10.0, key="al_price")
+    with al_c4:
+        al_label = st.text_input("Label (optional)", placeholder="e.g. Breakout level", key="al_label")
+
+    if st.button("🔔 Alert Set Karo", key="btn_add_alert"):
+        if al_price > 0:
+            new_alert = {
+                "instrument": al_instrument,
+                "price": al_price,
+                "condition": ">=" if "≥" in al_condition else "<=",
+                "label": al_label or f"{al_instrument.split('|')[-1]} @ {al_price:,.0f}",
+                "triggered": False,
+                "created": datetime.now().strftime("%d %b %I:%M %p"),
+            }
+            st.session_state.price_alerts.append(new_alert)
+            st.success(f"✅ Alert set! — {new_alert['label']}")
+        else:
+            st.warning("⚠️ Price daalo pehle!")
+
+# Current alerts check karo
+_price_map = {
+    "NSE_INDEX|Nifty 50":    nifty_price     if 'nifty_price'     in dir() else None,
+    "NSE_INDEX|Nifty Bank":  banknifty_price if 'banknifty_price' in dir() else None,
+    "BSE_INDEX|SENSEX":      sensex_price    if 'sensex_price'    in dir() else None,
+}
+
+alerts = st.session_state.price_alerts
+if alerts:
+    st.markdown(f'<div style="font-size:12px;color:#6495b8;margin-bottom:8px">🔔 {len(alerts)} alert(s) set hain</div>', unsafe_allow_html=True)
+    to_remove = []
+    for idx, al in enumerate(alerts):
+        current = _price_map.get(al["instrument"])
+        instr_short = al["instrument"].split("|")[-1]
+        cond_sym = "≥" if al["condition"] == ">=" else "≤"
+        triggered = al.get("triggered", False)
+
+        # Check condition
+        if current and not triggered:
+            hit = (al["condition"] == ">=" and current >= al["price"]) or \
+                  (al["condition"] == "<=" and current <= al["price"])
+            if hit:
+                al["triggered"] = True
+                add_notification("sr", f"⚡ Price Alert: {al['label']}",
+                    f"{instr_short} @ {current:,.0f} — Target {al['price']:,.0f} {cond_sym} hua!")
+
+        # Display
+        status_color  = "#00e676" if triggered else "#ffd600"
+        status_text   = "✅ TRIGGERED" if triggered else "⏳ Waiting..."
+        status_bg     = "rgba(0,230,118,0.08)" if triggered else "rgba(255,214,0,0.06)"
+        status_border = "#00e67640" if triggered else "#ffd60040"
+
+        curr_str = f"{current:,.0f}" if current else "—"
+
+        col_a, col_b = st.columns([7, 1])
+        with col_a:
+            st.markdown(f"""
+            <div style="background:{status_bg};border:1px solid {status_border};border-radius:10px;padding:10px 16px;margin:4px 0;display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <span style="color:#a78bfa;font-weight:700;font-size:13px">{instr_short}</span>
+                <span style="color:#6495b8;font-size:12px;margin:0 6px">{cond_sym}</span>
+                <span style="font-family:'JetBrains Mono',monospace;color:#e8f4ff;font-size:14px;font-weight:700">{al['price']:,.0f}</span>
+                <span style="color:#4e7a96;font-size:11px;margin-left:10px">{al['label']}</span>
+              </div>
+              <div style="text-align:right">
+                <div style="color:{status_color};font-size:11px;font-weight:700">{status_text}</div>
+                <div style="color:#4e7a96;font-size:10px">Current: {curr_str}</div>
+              </div>
+            </div>""", unsafe_allow_html=True)
+        with col_b:
+            if st.button("🗑️", key=f"del_alert_{idx}"):
+                to_remove.append(idx)
+
+    for i in sorted(to_remove, reverse=True):
+        st.session_state.price_alerts.pop(i)
+    if to_remove:
+        st.rerun()
+else:
+    st.markdown('<div style="background:#0f1e3580;border:1px solid rgba(255,214,0,0.15);border-radius:10px;padding:16px;text-align:center;color:#6495b8;font-size:13px">⚡ Koi alert set nahi — Upar "Naya Price Alert" expand karo</div>', unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ══════════════════════════════════════════════════════════════
+# 🌡️ FEATURE 3: SECTOR HEATMAP
+# ══════════════════════════════════════════════════════════════
+st.markdown('<div class="sec-header" style="border-left:3px solid #00e676">🌡️ Sector Heatmap</div>', unsafe_allow_html=True)
+
+SECTOR_INSTRUMENTS = {
+    "IT":      ["NSE_EQ|INE009A01021", "NSE_EQ|INE467B01029", "NSE_EQ|INE081A01020"],
+    "Banking": ["NSE_EQ|INE040A01034", "NSE_EQ|INE090A01021", "NSE_EQ|INE238A01034"],
+    "Auto":    ["NSE_EQ|INE917I01010", "NSE_EQ|INE031A01017", "NSE_EQ|INE585B01010"],
+    "Pharma":  ["NSE_EQ|INE348A01023", "NSE_EQ|INE397D01024", "NSE_EQ|INE118A01012"],
+    "Energy":  ["NSE_EQ|INE002A01018", "NSE_EQ|INE101A01026", "NSE_EQ|INE335Y01020"],
+    "Metal":   ["NSE_EQ|INE081A01020", "NSE_EQ|INE205A01025", "NSE_EQ|INE242A01010"],
+}
+
+# Nifty sector indices use karo — better data
+SECTOR_INDICES = {
+    "Nifty IT":      "NSE_INDEX|Nifty IT",
+    "Nifty Bank":    "NSE_INDEX|Nifty Bank",
+    "Nifty Auto":    "NSE_INDEX|Nifty Auto",
+    "Nifty Pharma":  "NSE_INDEX|Nifty Pharma",
+    "Nifty Energy":  "NSE_INDEX|Nifty Energy",
+    "Nifty Metal":   "NSE_INDEX|Nifty Metal",
+    "Nifty FMCG":    "NSE_INDEX|Nifty FMCG",
+    "Nifty Realty":  "NSE_INDEX|Nifty Realty",
+    "Nifty Infra":   "NSE_INDEX|Nifty Infra",
+    "Nifty PSU Bank":"NSE_INDEX|Nifty PSU Bank",
+}
+
+heat_col1, heat_col2 = st.columns([2, 8])
+with heat_col1:
+    if st.button("🔄 Heatmap Refresh", key="btn_heatmap"):
+        with st.spinner("Sector data la raha hoon..."):
+            sector_keys = list(SECTOR_INDICES.values())
+            sector_ltp   = safe_api_call(get_ltp,        token, sector_keys, fallback={})
+            sector_ohlc  = safe_api_call(get_ohlc,       token, sector_keys, fallback={})
+            sector_quote = safe_api_call(get_full_quote, token, sector_keys, fallback={})
+            st.session_state["sector_ltp"]   = sector_ltp   or {}
+            st.session_state["sector_ohlc"]  = sector_ohlc  or {}
+            st.session_state["sector_quote"] = sector_quote or {}
+
+sector_ltp   = st.session_state.get("sector_ltp",   {})
+sector_ohlc  = st.session_state.get("sector_ohlc",  {})
+sector_quote = st.session_state.get("sector_quote", {})
+
+if sector_ltp or sector_ohlc:
+    heat_cells = []
+    for name, instr in SECTOR_INDICES.items():
+        ltp_val   = extract_ltp(sector_ltp, instr)
+        o, h, l, c = extract_ohlc(sector_ohlc, instr)
+        prev = extract_prev_close(sector_quote, instr)
+
+        if ltp_val and (prev or c):
+            base  = prev or c
+            chg   = ltp_val - base
+            pct   = (chg / base * 100) if base else 0
+        else:
+            pct = None
+
+        heat_cells.append({"name": name, "pct": pct, "ltp": ltp_val})
+
+    # Render heatmap cells
+    n_cols = 5
+    rows   = [heat_cells[i:i+n_cols] for i in range(0, len(heat_cells), n_cols)]
+    for row in rows:
+        cols = st.columns(len(row))
+        for ci, cell in enumerate(row):
+            with cols[ci]:
+                pct = cell["pct"]
+                if pct is not None:
+                    if   pct >=  2.0: bg, tc = "#00e67630", "#00e676"
+                    elif pct >=  0.5: bg, tc = "#00e67615", "#00c853"
+                    elif pct >=  0.0: bg, tc = "#00e6760a", "#4caf50"
+                    elif pct >= -0.5: bg, tc = "#ff52520a", "#ef5350"
+                    elif pct >= -2.0: bg, tc = "#ff525215", "#f44336"
+                    else:             bg, tc = "#ff525230", "#ff5252"
+                    sign = "▲" if pct >= 0 else "▼"
+                    ltp_str = f"{cell['ltp']:,.0f}" if cell['ltp'] else "—"
+                    st.markdown(f"""
+                    <div style="background:{bg};border:1px solid {tc}40;border-radius:10px;padding:12px 10px;text-align:center;margin:3px 0">
+                      <div style="font-size:11px;color:#8ab8d8;font-weight:700;margin-bottom:4px">{cell['name']}</div>
+                      <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:900;color:{tc}">{sign}{abs(pct):.2f}%</div>
+                      <div style="font-size:11px;color:#6495b8;margin-top:2px">{ltp_str}</div>
+                    </div>""", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div style="background:#0f1e3560;border:1px solid rgba(29,78,216,0.15);border-radius:10px;padding:12px 10px;text-align:center;margin:3px 0">
+                      <div style="font-size:11px;color:#8ab8d8;font-weight:700;margin-bottom:4px">{cell['name']}</div>
+                      <div style="font-size:14px;color:#4e7a96">—</div>
+                    </div>""", unsafe_allow_html=True)
+else:
+    st.markdown('<div style="background:#0f1e3580;border:1px solid rgba(0,230,118,0.15);border-radius:10px;padding:20px;text-align:center;color:#6495b8;font-size:13px"><b style="color:#00e676">🌡️ Sector Heatmap</b><br><br>Refresh button dabao — Nifty sector indices ka live data dikhega<br><br><span style="font-size:11px;color:#4e7a96">IT · Bank · Auto · Pharma · Energy · Metal · FMCG · Realty · Infra · PSU Bank</span></div>', unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ══════════════════════════════════════════════════════════════
+# 📰 FEATURE 4: MARKET NEWS (NSE Announcements)
+# ══════════════════════════════════════════════════════════════
+st.markdown('<div class="sec-header" style="border-left:3px solid #ff8c00">📰 Market News & Corporate Actions</div>', unsafe_allow_html=True)
+
+def fetch_market_news():
+    """NSE se latest market news / corporate announcements fetch karo"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.nseindia.com/",
+    }
+    news_items = []
+    try:
+        session = requests.Session()
+        session.get("https://www.nseindia.com", headers=headers, timeout=3)
+        # NSE Market news API
+        ts = int(time.time() * 1000)
+        resp = session.get(
+            f"https://www.nseindia.com/api/market-news-all?_={ts}",
+            headers=headers, timeout=6
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data if isinstance(data, list) else data.get("data", [])
+            for item in items[:15]:
+                news_items.append({
+                    "title":    item.get("headline", item.get("title", item.get("subject", "No Title"))),
+                    "category": item.get("category", item.get("type", "News")),
+                    "time":     item.get("broadcastDateTime", item.get("announcementDateTime", item.get("datetime", ""))),
+                    "symbol":   item.get("symbol", ""),
+                })
+    except Exception as e:
+        print(f"[WARN] Market news fetch failed: {e}")
+
+    # Fallback: NSE Announcements
+    if not news_items:
+        try:
+            session2 = requests.Session()
+            session2.get("https://www.nseindia.com", headers=headers, timeout=3)
+            resp2 = session2.get(
+                "https://www.nseindia.com/api/corporate-announcements?index=equities",
+                headers=headers, timeout=6
+            )
+            if resp2.status_code == 200:
+                data2 = resp2.json()
+                items2 = data2 if isinstance(data2, list) else data2.get("data", [])
+                for item in items2[:12]:
+                    news_items.append({
+                        "title":    item.get("subject", item.get("headline", item.get("desc", "No Title"))),
+                        "category": item.get("category", "Corporate Action"),
+                        "time":     item.get("an_dt", item.get("datetime", "")),
+                        "symbol":   item.get("symbol", ""),
+                    })
+        except Exception as e2:
+            print(f"[WARN] NSE Announcements fallback failed: {e2}")
+    return news_items
+
+news_c1, news_c2 = st.columns([2, 8])
+with news_c1:
+    if st.button("🔄 News Refresh", key="btn_news"):
+        with st.spinner("News la raha hoon..."):
+            fetched = safe_api_call(fetch_market_news, fallback=[])
+            st.session_state.news_cache      = fetched or []
+            st.session_state.news_last_fetch = time.time()
+
+news_items = st.session_state.get("news_cache", [])
+news_fetch_ts = st.session_state.get("news_last_fetch", 0)
+
+if news_items:
+    if news_fetch_ts:
+        age_mins = int((time.time() - news_fetch_ts) / 60)
+        st.markdown(f'<div style="font-size:11px;color:#6495b8;margin-bottom:8px">🕐 Last fetch: {age_mins} min pehle — {len(news_items)} items</div>', unsafe_allow_html=True)
+
+    # Category color map
+    cat_colors = {
+        "Corporate Action": "#a78bfa",
+        "Result":           "#00e676",
+        "Dividend":         "#ffd600",
+        "Merger":           "#ff8c00",
+        "News":             "#00bfff",
+    }
+
+    for item in news_items:
+        cat   = str(item.get("category", "News"))
+        title = item.get("title", "")
+        sym   = item.get("symbol", "")
+        t     = item.get("time", "")
+        # Time format — only first 16 chars
+        try:
+            if "T" in str(t):
+                t = str(t)[:16].replace("T", " ")
+            else:
+                t = str(t)[:16]
+        except Exception:
+            pass
+
+        cat_color = next((v for k, v in cat_colors.items() if k.lower() in cat.lower()), "#90b8d8")
+        sym_html  = f'<span style="color:#ffd600;font-size:11px;font-weight:700;margin-right:8px">{sym}</span>' if sym else ""
+
+        st.markdown(f"""
+        <div style="background:linear-gradient(90deg,#0f1e3590 0%,#091525 100%);border-radius:10px;padding:11px 16px;margin:5px 0;border-left:3px solid {cat_color}40;display:flex;align-items:flex-start;gap:12px">
+          <div style="background:{cat_color}20;border:1px solid {cat_color}40;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;color:{cat_color};white-space:nowrap;flex-shrink:0;margin-top:2px">{cat[:18]}</div>
+          <div style="flex:1">
+            {sym_html}<span style="font-size:13px;color:#c8dff5;line-height:1.5">{title[:120]}</span>
+          </div>
+          <div style="font-size:10px;color:#4e7a96;white-space:nowrap;flex-shrink:0">🕐 {t}</div>
+        </div>""", unsafe_allow_html=True)
+else:
+    st.markdown('<div style="background:#0f1e3580;border:1px solid rgba(255,140,0,0.15);border-radius:10px;padding:20px;text-align:center;color:#6495b8;font-size:13px"><b style="color:#ff8c00">📰 Market News</b><br><br>Refresh button dabao — NSE se latest news aur corporate announcements dikhenge</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 st.caption("⚠️ Sirf educational purpose. Trading apni responsibility par karein.")
