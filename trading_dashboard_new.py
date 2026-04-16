@@ -169,53 +169,37 @@ def is_market_open():
     return True, "Market Open"
 
 # ── VIX fetch function ────────────────────────────────────────
-def get_india_vix(token):
-    """India VIX — Upstox API se directly (same token jo Nifty ke liye use hota hai)"""
-    VIX_KEY = "NSE_INDEX|India VIX"
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+def get_india_vix():
+    """India VIX NSE se fetch karo"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.nseindia.com/market-data/india-vix",
+    }
     try:
-        # LTP fetch
-        ltp_resp = requests.get(
-            "https://api.upstox.com/v2/market-quote/ltp",
-            params={"instrument_key": VIX_KEY},
+        session = requests.Session()
+        session.get("https://www.nseindia.com", headers=headers, timeout=3)
+        session.get("https://www.nseindia.com/market-data/india-vix", headers=headers, timeout=3)
+        ts   = int(time.time() * 1000)
+        resp = session.get(
+            f"https://www.nseindia.com/api/allIndices?_={ts}",
             headers=headers, timeout=8)
-        if ltp_resp.status_code == 401:
-            return None
-
-        # Full quote — High, Low, Prev Close ke liye
-        qt_resp = requests.get(
-            "https://api.upstox.com/v2/market-quote/quotes",
-            params={"instrument_key": VIX_KEY},
-            headers=headers, timeout=8)
-
-        last = high = low = prev = change = pchange = None
-
-        if ltp_resp.status_code == 200:
-            ltp_data = ltp_resp.json().get("data", {})
-            key      = VIX_KEY.replace("|", ":")
-            entry    = ltp_data.get(key) or ltp_data.get(VIX_KEY) or {}
-            last     = entry.get("last_price")
-
-        if qt_resp.status_code == 200:
-            qt_data = qt_resp.json().get("data", {})
-            key     = VIX_KEY.replace("|", ":")
-            q       = qt_data.get(key) or qt_data.get(VIX_KEY) or {}
-            ohlc    = q.get("ohlc", {})
-            high    = ohlc.get("high")
-            low     = ohlc.get("low")
-            prev    = (q.get("prev_close_price") or q.get("prev_close") or ohlc.get("close"))
-            if not last:
-                last = q.get("last_price")
-
-        if last:
-            if prev and prev != 0:
-                change  = round(last - prev, 2)
-                pchange = round(((last - prev) / prev) * 100, 2)
-            print(f"[INFO] VIX from Upstox: {last} ({pchange}%)")
-            return {"last": last, "change": change, "pchange": pchange,
-                    "high": high, "low": low, "prev": prev}
+        if resp.status_code == 200:
+            data = resp.json().get("data", [])
+            for item in data:
+                if "VIX" in str(item.get("index", "")).upper():
+                    return {
+                        "last":    item.get("last",    None),
+                        "change":  item.get("variation", item.get("change", None)),
+                        "pchange": item.get("percentChange", None),
+                        "high":    item.get("high",    None),
+                        "low":     item.get("low",     None),
+                        "prev":    item.get("previousClose", None),
+                    }
+    except requests.exceptions.ConnectionError:
+        print("[WARN] VIX fetch failed: NSE India blocked/unreachable on this network (DNS error)")
     except requests.exceptions.Timeout:
-        print("[WARN] VIX fetch timeout")
+        print("[WARN] VIX fetch failed: Timeout")
     except Exception as e:
         print(f"[WARN] VIX fetch failed: {e}")
     return None
@@ -1651,12 +1635,7 @@ if new_ltp:   st.session_state.cache_ltp   = new_ltp
 if new_quote: st.session_state.cache_quote = new_quote
 if new_ohlc:  st.session_state.cache_ohlc  = new_ohlc
 if new_ltp or new_quote:
-    try:
-        from zoneinfo import ZoneInfo
-        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
-    except Exception:
-        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    st.session_state.cache_timestamp = now_ist.strftime("%I:%M:%S %p")
+    st.session_state.cache_timestamp = datetime.now().strftime("%I:%M:%S %p")
 
 # ── Use cache — naya ho ya purana ────────────────────────────
 ltp_data   = st.session_state.cache_ltp
@@ -1816,8 +1795,8 @@ with col3:
     </div>""", unsafe_allow_html=True)
 
 with col4:
-    # ── India VIX — Upstox se directly ────────────────────
-    vix_data = safe_api_call(get_india_vix, token, fallback=None)
+    # ── India VIX ──────────────────────────────────────────
+    vix_data = safe_api_call(get_india_vix, fallback=None)
     if vix_data and vix_data.get("last"):
         vix_val   = vix_data["last"]
         vix_chg   = vix_data.get("pchange", 0) or 0
@@ -1833,7 +1812,7 @@ with col4:
           <div style="font-size:9px;color:#4e7a96;margin-top:6px;font-family:'JetBrains Mono',monospace">H: {vix_data.get('high','--')} · L: {vix_data.get('low','--')}</div>
         </div>""", unsafe_allow_html=True)
     else:
-        st.markdown('<div style="background:#0d1929;border-radius:10px;padding:12px;border:1px solid #ff8c0055;color:#ff8c00;font-size:11px">😨 VIX<br>⚠️ Data nahi aaya<br><span style="color:#6495b8;font-size:10px">Upstox se retry ho raha hai...</span></div>', unsafe_allow_html=True)
+        st.markdown('<div style="background:#0d1929;border-radius:10px;padding:12px;border:1px solid #ff8c0055;color:#ff8c00;font-size:11px">😨 VIX<br>⚠️ NSE blocked<br><span style="color:#6495b8;font-size:10px">Network pe NSE restricted hai</span></div>', unsafe_allow_html=True)
 
     # Watchlist removed
 
@@ -2742,6 +2721,258 @@ else:
 
 st.markdown("---")
 st.caption("⚠️ Sirf educational purpose. Trading apni responsibility par karein.")
+
+# ══════════════════════════════════════════════════════════════
+# 📓 TRADE JOURNAL
+# ══════════════════════════════════════════════════════════════
+TRADE_JOURNAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trade_journal.csv")
+TRADE_JOURNAL_FIELDS = ["id","date","symbol","expiry","strike","type","action","entry","exit","qty","pnl","pct","strategy","notes"]
+
+def load_trades():
+    if not os.path.exists(TRADE_JOURNAL_FILE):
+        return []
+    try:
+        trades = []
+        with open(TRADE_JOURNAL_FILE, "r") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                trades.append(row)
+        return trades
+    except Exception as e:
+        print(f"[WARN] Trade journal load failed: {e}")
+        return []
+
+def save_trades(trades):
+    try:
+        with open(TRADE_JOURNAL_FILE, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=TRADE_JOURNAL_FIELDS)
+            writer.writeheader()
+            writer.writerows(trades)
+    except Exception as e:
+        print(f"[WARN] Trade journal save failed: {e}")
+
+def delete_trade_by_id(trade_id):
+    trades = load_trades()
+    trades = [t for t in trades if str(t["id"]) != str(trade_id)]
+    save_trades(trades)
+
+st.markdown("---")
+st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📓 Trade Journal</div>', unsafe_allow_html=True)
+
+# ── Stats ─────────────────────────────────────────────────────
+all_trades = load_trades()
+total_trades = len(all_trades)
+total_pnl    = sum(float(t["pnl"]) for t in all_trades) if all_trades else 0
+wins         = sum(1 for t in all_trades if float(t["pnl"]) >= 0)
+win_rate     = round((wins / total_trades) * 100, 1) if total_trades > 0 else 0
+best_trade   = max((float(t["pnl"]) for t in all_trades), default=0)
+
+col_tj1, col_tj2, col_tj3, col_tj4 = st.columns(4)
+with col_tj1:
+    st.markdown(f"""<div class="metric-card" style="text-align:center">
+        <div style="font-size:10px;color:#6495b8;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Total Trades</div>
+        <div style="font-size:28px;font-weight:900;color:#60a5fa;font-family:'JetBrains Mono',monospace">{total_trades}</div>
+    </div>""", unsafe_allow_html=True)
+with col_tj2:
+    pnl_color = "#00e676" if total_pnl >= 0 else "#ff5252"
+    pnl_sign  = "+" if total_pnl >= 0 else ""
+    st.markdown(f"""<div class="metric-card" style="text-align:center">
+        <div style="font-size:10px;color:#6495b8;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Total P&amp;L</div>
+        <div style="font-size:28px;font-weight:900;color:{pnl_color};font-family:'JetBrains Mono',monospace">{pnl_sign}₹{total_pnl:,.0f}</div>
+    </div>""", unsafe_allow_html=True)
+with col_tj3:
+    wr_color = "#00e676" if win_rate >= 50 else "#ff5252"
+    st.markdown(f"""<div class="metric-card" style="text-align:center">
+        <div style="font-size:10px;color:#6495b8;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Win Rate</div>
+        <div style="font-size:28px;font-weight:900;color:{wr_color};font-family:'JetBrains Mono',monospace">{win_rate}%</div>
+    </div>""", unsafe_allow_html=True)
+with col_tj4:
+    best_color = "#00e676" if best_trade >= 0 else "#ff5252"
+    st.markdown(f"""<div class="metric-card" style="text-align:center">
+        <div style="font-size:10px;color:#6495b8;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Best Trade</div>
+        <div style="font-size:28px;font-weight:900;color:{best_color};font-family:'JetBrains Mono',monospace">₹{best_trade:,.0f}</div>
+    </div>""", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ── Add New Trade Form ─────────────────────────────────────────
+with st.expander("➕ Naya Trade Add Karo", expanded=False):
+    with st.form("trade_journal_form", clear_on_submit=True):
+        fcol1, fcol2, fcol3 = st.columns(3)
+        with fcol1:
+            tj_date     = st.date_input("Date", value=date.today(), key="tj_date")
+            tj_symbol   = st.selectbox("Index / Stock", ["NIFTY","BANKNIFTY","FINNIFTY","SENSEX","Other"], key="tj_sym")
+            tj_expiry   = st.text_input("Expiry (e.g. 17 Apr 2025)", key="tj_exp")
+        with fcol2:
+            tj_strike   = st.number_input("Strike", min_value=0, step=50, key="tj_strike")
+            tj_type     = st.selectbox("CE / PE", ["CE","PE"], key="tj_type")
+            tj_action   = st.selectbox("BUY / SELL", ["BUY","SELL"], key="tj_action")
+        with fcol3:
+            tj_entry    = st.number_input("Entry Price", min_value=0.0, step=0.05, format="%.2f", key="tj_entry")
+            tj_exit     = st.number_input("Exit Price", min_value=0.0, step=0.05, format="%.2f", key="tj_exit")
+            tj_qty      = st.number_input("Lot Size / Qty", min_value=1, step=1, key="tj_qty")
+
+        fcol4, fcol5 = st.columns(2)
+        with fcol4:
+            tj_strategy = st.selectbox("Strategy", ["Intraday","Scalping","Swing","Straddle","Strangle","Bull Call Spread","Bear Put Spread","Other"], key="tj_strat")
+        with fcol5:
+            tj_notes    = st.text_area("Notes / Reason", placeholder="Calls SASTA tha, trend bullish tha...", height=80, key="tj_notes")
+
+        # Live P&L preview
+        if tj_entry > 0 and tj_exit > 0 and tj_qty > 0:
+            diff_preview  = (tj_exit - tj_entry) if tj_action == "BUY" else (tj_entry - tj_exit)
+            pnl_preview   = round(diff_preview * tj_qty, 2)
+            pct_preview   = round((diff_preview / tj_entry) * 100, 2) if tj_entry > 0 else 0
+            cap_preview   = round(tj_entry * tj_qty, 2)
+            pnl_col_prev  = "#00e676" if pnl_preview >= 0 else "#ff5252"
+            pnl_sign_prev = "+" if pnl_preview >= 0 else ""
+            st.markdown(f"""
+            <div style="background:#060e1a;border:1px solid #1d4ed840;border-radius:8px;padding:10px 16px;display:flex;gap:32px;margin-top:6px">
+                <div><div style="font-size:10px;color:#6495b8">Estimated P&amp;L</div>
+                     <div style="font-size:18px;font-weight:900;color:{pnl_col_prev};font-family:'JetBrains Mono',monospace">{pnl_sign_prev}₹{pnl_preview:,.0f}</div></div>
+                <div><div style="font-size:10px;color:#6495b8">Return %</div>
+                     <div style="font-size:18px;font-weight:900;color:{pnl_col_prev};font-family:'JetBrains Mono',monospace">{pnl_sign_prev}{pct_preview:.1f}%</div></div>
+                <div><div style="font-size:10px;color:#6495b8">Capital Used</div>
+                     <div style="font-size:18px;font-weight:900;color:#90b8d8;font-family:'JetBrains Mono',monospace">₹{cap_preview:,.0f}</div></div>
+            </div>""", unsafe_allow_html=True)
+
+        submitted = st.form_submit_button("✅ Trade Save Karo", use_container_width=True)
+        if submitted:
+            if tj_entry <= 0 or tj_exit <= 0 or tj_qty <= 0 or tj_strike <= 0:
+                st.error("❌ Strike, Entry, Exit aur Qty zaroor bharo!")
+            else:
+                diff    = (tj_exit - tj_entry) if tj_action == "BUY" else (tj_entry - tj_exit)
+                pnl_val = round(diff * tj_qty, 2)
+                pct_val = round((diff / tj_entry) * 100, 2) if tj_entry > 0 else 0
+                new_trade = {
+                    "id":       int(time.time() * 1000),
+                    "date":     str(tj_date),
+                    "symbol":   tj_symbol,
+                    "expiry":   tj_expiry,
+                    "strike":   tj_strike,
+                    "type":     tj_type,
+                    "action":   tj_action,
+                    "entry":    tj_entry,
+                    "exit":     tj_exit,
+                    "qty":      tj_qty,
+                    "pnl":      pnl_val,
+                    "pct":      pct_val,
+                    "strategy": tj_strategy,
+                    "notes":    tj_notes,
+                }
+                existing = load_trades()
+                existing.insert(0, new_trade)
+                save_trades(existing)
+                st.success(f"✅ Trade saved! P&L: {'+'if pnl_val>=0 else ''}₹{pnl_val:,.0f}")
+                st.rerun()
+
+# ── Trade History Table ────────────────────────────────────────
+st.markdown('<div style="font-size:11px;color:#6495b8;letter-spacing:2px;text-transform:uppercase;margin:14px 0 8px">📋 Trade History</div>', unsafe_allow_html=True)
+
+# Filter buttons
+tj_filter_col1, tj_filter_col2, tj_filter_col3, tj_filter_col4, tj_filter_col5 = st.columns([1,1,1,1,4])
+with tj_filter_col1:
+    show_all    = st.button("All", key="tjf_all",    use_container_width=True)
+with tj_filter_col2:
+    show_profit = st.button("✅ Profit", key="tjf_profit", use_container_width=True)
+with tj_filter_col3:
+    show_loss   = st.button("❌ Loss",   key="tjf_loss",   use_container_width=True)
+with tj_filter_col4:
+    show_today  = st.button("📅 Aaj",   key="tjf_today",  use_container_width=True)
+
+# Filter state
+if "tj_filter" not in st.session_state:
+    st.session_state.tj_filter = "all"
+if show_all:    st.session_state.tj_filter = "all"
+if show_profit: st.session_state.tj_filter = "profit"
+if show_loss:   st.session_state.tj_filter = "loss"
+if show_today:  st.session_state.tj_filter = "today"
+
+# Apply filter
+display_trades = load_trades()
+if st.session_state.tj_filter == "profit":
+    display_trades = [t for t in display_trades if float(t["pnl"]) >= 0]
+elif st.session_state.tj_filter == "loss":
+    display_trades = [t for t in display_trades if float(t["pnl"]) < 0]
+elif st.session_state.tj_filter == "today":
+    today_str_tj = str(date.today())
+    display_trades = [t for t in display_trades if t["date"] == today_str_tj]
+
+if not display_trades:
+    st.markdown('<div style="background:#0f1e3580;border:1px solid #1d4ed830;border-radius:8px;padding:20px;text-align:center;color:#6495b8;font-size:13px">Koi trade nahi mila — upar form se add karo</div>', unsafe_allow_html=True)
+else:
+    # Build HTML table
+    rows_html = ""
+    for t in display_trades:
+        pnl_f    = float(t["pnl"])
+        pct_f    = float(t["pct"])
+        pnl_col  = "#00e676" if pnl_f >= 0 else "#ff5252"
+        pnl_sign = "+" if pnl_f >= 0 else ""
+        act_col  = "#00e676" if t["action"] == "BUY" else "#ff5252"
+        type_col = "#60a5fa" if t["type"] == "CE" else "#c084fc"
+        rows_html += f"""
+        <tr style="border-bottom:1px solid rgba(29,78,216,0.08)">
+          <td style="padding:7px 10px;color:#8ab8d8;font-size:11px">{t['date']}</td>
+          <td style="padding:7px 10px;color:#60a5fa;font-weight:700;font-size:12px">{t['symbol']}</td>
+          <td style="padding:7px 10px;color:#e8f4ff;font-size:12px">{t['strike']}<br><span style="font-size:9px;color:#4e7a96">{t.get('expiry','')}</span></td>
+          <td style="padding:7px 10px"><span style="color:{type_col};background:{type_col}20;border:1px solid {type_col}50;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">{t['type']}</span></td>
+          <td style="padding:7px 10px"><span style="color:{act_col};background:{act_col}20;border:1px solid {act_col}50;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">{t['action']}</span></td>
+          <td style="padding:7px 10px;color:#90b8d8;font-family:'JetBrains Mono',monospace;font-size:12px">₹{float(t['entry']):.1f}</td>
+          <td style="padding:7px 10px;color:#90b8d8;font-family:'JetBrains Mono',monospace;font-size:12px">₹{float(t['exit']):.1f}</td>
+          <td style="padding:7px 10px;color:#8ab8d8;font-size:12px">{t['qty']}</td>
+          <td style="padding:7px 10px;color:{pnl_col};font-weight:900;font-family:'JetBrains Mono',monospace;font-size:13px">{pnl_sign}₹{pnl_f:,.0f}</td>
+          <td style="padding:7px 10px;color:{pnl_col};font-weight:700;font-size:12px">{pnl_sign}{pct_f:.1f}%</td>
+          <td style="padding:7px 10px;color:#a78bfa;font-size:10px">{t.get('strategy','')}</td>
+          <td style="padding:7px 10px;color:#6495b8;font-size:10px;max-width:120px">{t.get('notes','—')[:40]}</td>
+        </tr>"""
+
+    st.markdown(f"""
+    <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.15)">
+    <table style="width:100%;border-collapse:collapse;background:#0a1220;font-family:'Inter',sans-serif">
+      <thead>
+        <tr style="background:rgba(29,78,216,0.12);border-bottom:1px solid rgba(29,78,216,0.25)">
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Date</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Symbol</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Strike</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Type</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Action</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Entry</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Exit</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Qty</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">P&amp;L</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Return</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Strategy</th>
+          <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Notes</th>
+        </tr>
+      </thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+    </div>""", unsafe_allow_html=True)
+
+    # Delete trade option
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("🗑️ Trade Delete Karo"):
+        trade_options = {f"{t['date']} | {t['symbol']} {t['strike']} {t['type']} | P&L: ₹{float(t['pnl']):,.0f}": t["id"] for t in display_trades}
+        selected_trade = st.selectbox("Trade select karo:", list(trade_options.keys()), key="tj_del_select")
+        if st.button("🗑️ Delete Selected Trade", key="tj_del_btn"):
+            delete_trade_by_id(trade_options[selected_trade])
+            st.success("✅ Trade delete ho gaya!")
+            st.rerun()
+
+    # Export CSV button
+    if all_trades:
+        import io
+        csv_buf = io.StringIO()
+        writer  = csv.DictWriter(csv_buf, fieldnames=TRADE_JOURNAL_FIELDS)
+        writer.writeheader()
+        writer.writerows(all_trades)
+        st.download_button(
+            label="📥 Export Trade Journal (CSV)",
+            data=csv_buf.getvalue(),
+            file_name=f"trade_journal_{date.today()}.csv",
+            mime="text/csv",
+            key="tj_export"
+        )
 
 # ══════════════════════════════════════════════════════════════
 # 📡 OI WALL TICKER — Bottom sticky scrolling bar
