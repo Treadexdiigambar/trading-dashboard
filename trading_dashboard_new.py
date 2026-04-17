@@ -13,6 +13,15 @@ from datetime import datetime, date, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
+# ── IST Time Helper — sab jagah IST use karo ─────────────────
+def now_ist():
+    """Hamesha IST (India Standard Time) datetime return karo"""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Kolkata"))
+    except Exception:
+        return datetime.utcnow() + timedelta(hours=5, minutes=30)
+
 # ── OI History — 7 days data save/load ───────────────────────
 OI_HISTORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "oi_history")
 
@@ -154,17 +163,16 @@ def is_market_open():
     """Check karo market abhi khula hai ya nahi (IST 9:15 AM - 3:30 PM, Mon-Fri)"""
     try:
         from zoneinfo import ZoneInfo
-        now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+        _now = datetime.now(ZoneInfo("Asia/Kolkata"))
     except Exception:
-        # Fallback if zoneinfo unavailable
-        now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    if now_ist.weekday() >= 5:  # Saturday=5, Sunday=6
+        _now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    if _now.weekday() >= 5:  # Saturday=5, Sunday=6
         return False, "Weekend"
-    market_open  = now_ist.replace(hour=9,  minute=15, second=0, microsecond=0)
-    market_close = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
-    if now_ist < market_open:
+    market_open  = _now.replace(hour=9,  minute=15, second=0, microsecond=0)
+    market_close = _now.replace(hour=15, minute=30, second=0, microsecond=0)
+    if _now < market_open:
         return False, f"Pre-Market (Opens {market_open.strftime('%I:%M %p')})"
-    elif now_ist > market_close:
+    elif _now > market_close:
         return False, "Market Closed (3:30 PM ke baad)"
     return True, "Market Open"
 
@@ -664,7 +672,7 @@ def add_notification(ntype, title, msg):
         "type":  ntype,
         "title": title,
         "msg":   msg,
-        "time":  datetime.now().strftime("%d %b  %I:%M:%S %p")
+        "time":  now_ist().strftime("%d %b  %I:%M:%S %p")
     }
     existing = st.session_state.notifications
     # Duplicate avoid karo — same title last entry mein already hai toh skip
@@ -1099,8 +1107,8 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
             print(f"[WARN] OI cache save failed: {e}")
 
     # ── Daily OI History save karo — 3:15 PM ke baad ─────────
-    now_ist = datetime.now()
-    if curr_oi and now_ist.hour >= 15 and now_ist.minute >= 15:
+    _now_ist = now_ist()
+    if curr_oi and _now_ist.hour >= 15 and _now_ist.minute >= 15:
         try:
             save_daily_oi(
                 instrument_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX"),
@@ -1432,7 +1440,7 @@ with hcol2:
         <span class="{mkt_dot}"></span>{mkt_icon} {mkt_status}
       </div>
       <div style="font-size:11px;color:#4e7a96;margin-top:6px;display:flex;align-items:center;gap:6px">
-        <span>{datetime.now().strftime('%d %b %Y  %I:%M %p')}</span>
+        <span>{now_ist().strftime('%d %b %Y  %I:%M %p')}</span>
         <span style="color:rgba(0,230,118,0.7);font-weight:600;font-size:10px;background:rgba(0,230,118,0.07);padding:2px 7px;border-radius:10px;border:1px solid rgba(0,230,118,0.15)">⚡ 3s</span>
       </div>
     </div>""", unsafe_allow_html=True)
@@ -1573,12 +1581,12 @@ with col_terminal:
 
 # ── Market Closed Banner ───────────────────────────────────────
 if not mkt_open:
-    now_ist = datetime.now()
-    if now_ist.weekday() >= 5:
+    _now_ist = now_ist()
+    if _now_ist.weekday() >= 5:
         closed_reason = "🗓️ Aaj Weekend hai — Market band hai"
         closed_sub    = "Somwar 9:15 AM pe market khulega"
-    elif now_ist.hour < 9 or (now_ist.hour == 9 and now_ist.minute < 15):
-        opens_in = (now_ist.replace(hour=9, minute=15, second=0) - now_ist)
+    elif _now_ist.hour < 9 or (_now_ist.hour == 9 and _now_ist.minute < 15):
+        opens_in = (_now_ist.replace(hour=9, minute=15, second=0) - _now_ist)
         mins     = int(opens_in.total_seconds() // 60)
         closed_reason = f"🌅 Pre-Market — Market abhi band hai"
         closed_sub    = f"Aaj 9:15 AM pe khulega ({mins} minute mein)"
@@ -1635,7 +1643,7 @@ if new_ltp:   st.session_state.cache_ltp   = new_ltp
 if new_quote: st.session_state.cache_quote = new_quote
 if new_ohlc:  st.session_state.cache_ohlc  = new_ohlc
 if new_ltp or new_quote:
-    st.session_state.cache_timestamp = datetime.now().strftime("%I:%M:%S %p")
+    st.session_state.cache_timestamp = now_ist().strftime("%I:%M:%S %p")
 
 # ── Use cache — naya ho ya purana ────────────────────────────
 ltp_data   = st.session_state.cache_ltp
@@ -1851,7 +1859,7 @@ for tab, instrument, name, spot in [
                 </div>
                 <div style="text-align:right">
                   <div style="font-size:18px;font-weight:800;color:{tab_chg_color}">{tab_arrow} {abs(tab_chg):,.2f} ({abs(tab_pct):.2f}%)</div>
-                  <div style="font-size:11px;color:#6495b8;margin-top:2px">{mkt_icon} {mkt_status} &nbsp;|&nbsp; {datetime.now().strftime('%I:%M %p')}</div>
+                  <div style="font-size:11px;color:#6495b8;margin-top:2px">{mkt_icon} {mkt_status} &nbsp;|&nbsp; {now_ist().strftime('%I:%M %p')}</div>
                 </div>
               </div>
             </div>""", unsafe_allow_html=True)
@@ -1936,7 +1944,7 @@ for tab, instrument, name, spot in [
                     "sup_oi":     sup_oi,
                     "atm":        atm_s,
                     "spot":       round(spot, 0) if spot else 0,
-                    "updated":    datetime.now().strftime("%I:%M %p"),
+                    "updated":    now_ist().strftime("%I:%M %p"),
                 })
                 st.session_state.oi_wall_ticker   = ticker_list
                 st.session_state.oi_wall_last_update = now_ts
@@ -2193,41 +2201,69 @@ for tab, instrument, name, spot in [
                     "Straddle": f"{straddle:.1f}",
                 })
 
-            fv_tbl = pd.DataFrame(fv_rows)
+            # ── Dark HTML table — no white background ─────────
+            tbl_rows_html = ""
+            for r in fv_rows:
+                is_atm   = "⭐" in r["Strike"]
+                row_bg   = "background:#1a1500;" if is_atm else ""
+                row_bdr  = "border-left:3px solid #ffd600;" if is_atm else "border-left:3px solid transparent;"
 
-            def style_fv(row):
-                if "⭐" in str(row["Strike"]):
-                    return ["background-color:#ffd60015;font-weight:bold;color:#ffd600"] * len(row)
-                return [""] * len(row)
-
-            def clr_status(v):
-                if "MEHNGA" in str(v): return "color:#ff5252;font-weight:800;font-size:14px"
-                if "SASTA"  in str(v): return "color:#00e676;font-weight:800;font-size:14px"
-                return "color:#6495b8;font-size:13px"
-
-            def clr_diff(v):
+                # C Diff color
                 try:
-                    n = float(str(v).replace("+",""))
-                    if n > 2:  return "color:#ff5252;font-weight:700"
-                    if n < -2: return "color:#00e676;font-weight:700"
-                except ValueError:
-                    pass
-                return "color:#6495b8"
+                    cd = float(r["C Diff"].replace("+",""))
+                    c_diff_col = "#ff5252" if cd > 2 else ("#00e676" if cd < -2 else "#6495b8")
+                except: c_diff_col = "#6495b8"
 
-            def clr_neutral(v):
-                return "color:#64748b;font-size:14px"  # LTP, FV — neutral gray
+                # P Diff color
+                try:
+                    pd_ = float(r["P Diff"].replace("+",""))
+                    p_diff_col = "#ff5252" if pd_ > 2 else ("#00e676" if pd_ < -2 else "#6495b8")
+                except: p_diff_col = "#6495b8"
 
-            def clr_strike(v):
-                if "⭐" in str(v): return "color:#ffd600;font-weight:800;font-size:15px;background-color:#ffd60015"
-                return "color:#90b8d8;font-size:14px"
+                # Status tags
+                def status_html(s):
+                    if "MEHNGA" in s:
+                        return '<span style="color:#ff5252;font-weight:800;font-size:12px">🔴 MEHNGA</span>'
+                    elif "SASTA" in s:
+                        return '<span style="color:#00e676;font-weight:800;font-size:12px">🟢 SASTA</span>'
+                    return '<span style="color:#6495b8;font-size:12px">⚪ FAIR</span>'
 
-            st.dataframe(
-                fv_tbl.style
-                    .apply(style_fv, axis=1)
-                    .map(clr_neutral,  subset=["Call LTP","Call FV","Put LTP","Put FV","Straddle"])
-                    .map(clr_strike,   subset=["Strike"])
-                    .map(clr_status,   subset=["C Status","P Status"])
-                    .map(clr_diff,     subset=["C Diff","P Diff"]), use_container_width=True, hide_index=True)
+                strike_disp = f'<span style="color:#ffd600;font-weight:900">{r["Strike"]}</span>' if is_atm else f'<span style="color:#60a5fa">{r["Strike"]}</span>'
+
+                tbl_rows_html += f"""
+                <tr style="{row_bg}{row_bdr}border-bottom:1px solid rgba(29,78,216,0.1);">
+                  <td style="padding:7px 10px;color:#8ab8d8;font-family:'JetBrains Mono',monospace;font-size:12px">{r["Call LTP"]}</td>
+                  <td style="padding:7px 10px;color:#6495b8;font-size:12px">{r["Call FV"]}</td>
+                  <td style="padding:7px 10px;color:{c_diff_col};font-weight:700;font-size:12px">{r["C Diff"]}</td>
+                  <td style="padding:7px 10px">{status_html(r["C Status"])}</td>
+                  <td style="padding:7px 10px;text-align:center">{strike_disp}</td>
+                  <td style="padding:7px 10px;color:#8ab8d8;font-family:'JetBrains Mono',monospace;font-size:12px">{r["Put LTP"]}</td>
+                  <td style="padding:7px 10px;color:#6495b8;font-size:12px">{r["Put FV"]}</td>
+                  <td style="padding:7px 10px;color:{p_diff_col};font-weight:700;font-size:12px">{r["P Diff"]}</td>
+                  <td style="padding:7px 10px">{status_html(r["P Status"])}</td>
+                  <td style="padding:7px 10px;color:#a78bfa;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700">{r["Straddle"]}</td>
+                </tr>"""
+
+            st.markdown(f"""
+            <div style="overflow-x:auto;border-radius:12px;border:1px solid rgba(29,78,216,0.2);margin-top:10px">
+              <table style="width:100%;border-collapse:collapse;background:#060e1a;font-family:'Inter',sans-serif">
+                <thead>
+                  <tr style="background:rgba(29,78,216,0.15);border-bottom:1px solid rgba(29,78,216,0.3)">
+                    <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Call LTP</th>
+                    <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Call FV</th>
+                    <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">C Diff</th>
+                    <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">C Status</th>
+                    <th style="padding:8px 10px;text-align:center;color:#ffd600;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Strike</th>
+                    <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Put LTP</th>
+                    <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Put FV</th>
+                    <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">P Diff</th>
+                    <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">P Status</th>
+                    <th style="padding:8px 10px;text-align:left;color:#a78bfa;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Straddle</th>
+                  </tr>
+                </thead>
+                <tbody>{tbl_rows_html}</tbody>
+              </table>
+            </div>""", unsafe_allow_html=True)
 
             st.markdown("""<div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;font-size:12px">
               <span style="color:#ff5252;font-weight:bold">🔴 MEHNGA = Costly (avoid buying)</span>
@@ -2657,8 +2693,8 @@ for tab, instrument, name, spot in [
 st.markdown("---")
 st.markdown('<div class="sec-header" style="border-left:3px solid #60a5fa">🏦 FII / DII Activity</div>', unsafe_allow_html=True)
 
-fetch_time = datetime.now().strftime("%d %b %Y, %I:%M:%S %p")
-today_str  = datetime.now().strftime("%d-%b-%Y")
+fetch_time = now_ist().strftime("%d %b %Y, %I:%M:%S %p")
+today_str  = now_ist().strftime("%d-%b-%Y")
 
 col_fii1, col_fii2 = st.columns([8, 2])
 with col_fii2:
