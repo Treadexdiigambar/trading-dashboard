@@ -983,81 +983,122 @@ def get_option_chain(token, instrument, selected_expiry=None, all_exp=None):
         return None, selected_expiry
 
 def get_fii_dii_data():
-    """FII/DII data — NSE se try karo, fail pe alternate sources"""
+    """FII/DII data — multiple sources try karo"""
 
     base_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
     }
 
-    # ── Source 1: NSE India (primary) ────────────────────────
+    def parse_to_standard(category, date_str, buy, sell, net):
+        return {
+            "category": category,
+            "date": date_str,
+            "buyValue": float(buy or 0),
+            "sellValue": float(sell or 0),
+            "netValue": float(net or 0),
+        }
+
+    # ── Source 1: NSE India ────────────────────────────────────
     try:
-        session = requests.Session()
-        session.headers.update(base_headers)
-        session.get("https://www.nseindia.com", timeout=5)
-        session.get("https://www.nseindia.com/market-data/fii-dii-activity",
-                    headers={**base_headers, "Referer": "https://www.nseindia.com/"}, timeout=5)
+        s = requests.Session()
+        s.headers.update(base_headers)
+        s.get("https://www.nseindia.com", timeout=5)
+        s.get("https://www.nseindia.com/market-data/fii-dii-activity", timeout=5)
         ts   = int(time.time() * 1000)
-        resp = session.get(
-            f"https://www.nseindia.com/api/fiidiiTradeReact?_={ts}",
-            headers={**base_headers, "Referer": "https://www.nseindia.com/market-data/fii-dii-activity"},
-            timeout=8)
+        resp = s.get(f"https://www.nseindia.com/api/fiidiiTradeReact?_={ts}",
+                     headers={**base_headers, "Referer": "https://www.nseindia.com/market-data/fii-dii-activity"},
+                     timeout=8)
         if resp.status_code == 200:
             data = resp.json()
             if data and len(data) > 0:
-                print("[INFO] FII/DII: NSE source OK")
+                print("[INFO] FII/DII: NSE OK")
                 return data
     except Exception as e:
-        print(f"[WARN] FII/DII NSE failed: {e}")
+        print(f"[WARN] FII/DII NSE: {e}")
 
-    # ── Source 2: NSE alternate API endpoint ─────────────────
+    # ── Source 2: Trendlyne public API ────────────────────────
     try:
-        session2 = requests.Session()
-        session2.headers.update(base_headers)
-        session2.get("https://www.nseindia.com", timeout=5)
-        resp2 = session2.get(
-            "https://www.nseindia.com/api/fiidiiTradeReact",
-            headers={**base_headers, "Referer": "https://www.nseindia.com/"},
+        resp2 = requests.get(
+            "https://trendlyne.com/api/fii-dii-data/",
+            headers={**base_headers, "Referer": "https://trendlyne.com/"},
             timeout=8)
         if resp2.status_code == 200:
-            data2 = resp2.json()
-            if data2 and len(data2) > 0:
-                print("[INFO] FII/DII: NSE alt endpoint OK")
-                return data2
+            raw = resp2.json()
+            result = []
+            if isinstance(raw, dict):
+                for cat in ["FII", "DII"]:
+                    d = raw.get(cat, raw.get(cat.lower(), {}))
+                    if d:
+                        result.append(parse_to_standard(
+                            cat,
+                            d.get("date", now_ist().strftime("%d-%b-%Y")),
+                            d.get("buy", 0), d.get("sell", 0), d.get("net", 0)
+                        ))
+            if result:
+                print("[INFO] FII/DII: Trendlyne OK")
+                return result
     except Exception as e:
-        print(f"[WARN] FII/DII NSE alt failed: {e}")
+        print(f"[WARN] FII/DII Trendlyne: {e}")
 
-    # ── Source 3: Constructed fallback — last known reasonable data ──
-    # Jab koi bhi source kaam na kare — cached/static data dikhao
+    # ── Source 3: Tickertape / Screener scrape ─────────────────
     try:
-        today_str = now_ist().strftime("%d-%b-%Y")
-        fallback_data = [
-            {
-                "category": "FII",
-                "date": today_str,
-                "buyValue": 0,
-                "sellValue": 0,
-                "netValue": 0,
-                "_source": "unavailable"
-            },
-            {
-                "category": "DII",
-                "date": today_str,
-                "buyValue": 0,
-                "sellValue": 0,
-                "netValue": 0,
-                "_source": "unavailable"
-            }
-        ]
-        print("[WARN] FII/DII: All sources failed — returning empty fallback")
-        return fallback_data
-    except Exception:
-        pass
+        resp3 = requests.get(
+            "https://api.tickertape.in/stocks/fiidii",
+            headers={**base_headers, "Referer": "https://www.tickertape.in/"},
+            timeout=8)
+        if resp3.status_code == 200:
+            raw3 = resp3.json()
+            data3 = raw3.get("data", raw3)
+            if data3:
+                result3 = []
+                for item in (data3 if isinstance(data3, list) else [data3]):
+                    cat = str(item.get("category", item.get("type", ""))).upper()
+                    if cat in ["FII", "DII", "FPI"]:
+                        if cat == "FPI": cat = "FII"
+                        result3.append(parse_to_standard(
+                            cat,
+                            item.get("date", now_ist().strftime("%d-%b-%Y")),
+                            item.get("buy", item.get("buyValue", 0)),
+                            item.get("sell", item.get("sellValue", 0)),
+                            item.get("net", item.get("netValue", 0))
+                        ))
+                if result3:
+                    print("[INFO] FII/DII: Tickertape OK")
+                    return result3
+    except Exception as e:
+        print(f"[WARN] FII/DII Tickertape: {e}")
 
-    return None
+    # ── Source 4: MoneyControl scrape ─────────────────────────
+    try:
+        resp4 = requests.get(
+            "https://priceapi.moneycontrol.com/techCharts/indianMarket/index/history?symbol=NSE_FII&resolution=1D&from=1609459200&to=9999999999&countback=2&currencyCode=INR",
+            headers={**base_headers, "Referer": "https://www.moneycontrol.com/"},
+            timeout=8)
+        if resp4.status_code == 200:
+            raw4 = resp4.json()
+            if raw4.get("s") == "ok":
+                closes = raw4.get("c", [])
+                if closes:
+                    net_fii = float(closes[-1])
+                    today_s = now_ist().strftime("%d-%b-%Y")
+                    print("[INFO] FII/DII: MoneyControl partial OK")
+                    return [
+                        parse_to_standard("FII", today_s, max(0, net_fii), max(0, -net_fii), net_fii),
+                        {"category": "DII", "date": today_s, "buyValue": 0, "sellValue": 0, "netValue": 0, "_source": "partial"}
+                    ]
+    except Exception as e:
+        print(f"[WARN] FII/DII MoneyControl: {e}")
+
+    # ── All sources failed — return unavailable marker ─────────
+    today_s = now_ist().strftime("%d-%b-%Y")
+    print("[WARN] FII/DII: All sources failed")
+    return [
+        {"category": "FII", "date": today_s, "buyValue": 0, "sellValue": 0, "netValue": 0, "_source": "unavailable"},
+        {"category": "DII", "date": today_s, "buyValue": 0, "sellValue": 0, "netValue": 0, "_source": "unavailable"},
+    ]
 
 def extract_ltp(data, instrument):
     key = instrument.replace("|", ":")
