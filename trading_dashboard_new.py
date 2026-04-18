@@ -1223,7 +1223,8 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
     # ── OI Timeline Snapshots — multiple timeframes ke liye ──────
     # Har refresh pe current OI timestamp ke saath save karo
     if curr_oi:
-        snap_key = f"oi_snap_{int(first_strike) if first_strike else 'x'}"
+        instr_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX")
+        snap_key = f"oi_snap_{instr_name}"
         now_ts_snap = int(time.time())
         if "oi_snapshots" not in st.session_state:
             st.session_state["oi_snapshots"] = {}
@@ -2502,7 +2503,7 @@ for tab, instrument, name, spot in [
                 tf_secs = tf_seconds[tf_labels.index(sel_tf)]
 
                 # ── Calculate OI diff for selected timeframe ───
-                snap_key = f"oi_snap_{int(first_strike) if first_strike else 'x'}"
+                snap_key = f"oi_snap_{name.replace(' ','_').upper()}"
                 snapshots = st.session_state.get("oi_snapshots", {}).get(snap_key, {})
                 now_ts_tf = int(time.time())
 
