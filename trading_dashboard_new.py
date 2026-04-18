@@ -2490,78 +2490,17 @@ for tab, instrument, name, spot in [
                     key=f"chart_mode_{name}"
                 )
 
-                # ── OI Timeframe Selector ──────────────────────
-                tf_labels   = ["Last refresh", "5 min", "15 min", "30 min", "1 hr", "2 hr", "3 hr", "4 hr", "Full Day"]
-                tf_seconds  = [0, 300, 900, 1800, 3600, 7200, 10800, 14400, 86400]
-
-                sel_tf = st.select_slider(
-                    "⏱️ OI Change Timeframe:",
-                    options=tf_labels,
-                    value="Last refresh",
-                    key=f"oi_tf_{name}"
-                )
-                tf_secs = tf_seconds[tf_labels.index(sel_tf)]
-
-                # ── Calculate OI diff for selected timeframe ───
-                snap_key = f"oi_snap_{name.replace(' ','_').upper()}"
-                snapshots = st.session_state.get("oi_snapshots", {}).get(snap_key, {})
-                now_ts_tf = int(time.time())
-
-                tf_call_chg = {}
-                tf_put_chg  = {}
-                tf_label_str = sel_tf
-
-                if tf_secs == 0 or not snapshots:
-                    # Last refresh — existing OI change use karo
-                    for _, row in df_d.iterrows():
-                        s = int(row["Strike"])
-                        tf_call_chg[s] = int(row.get("Call OI Change", 0))
-                        tf_put_chg[s]  = int(row.get("Put OI Change", 0))
-                else:
-                    # Find closest snapshot to target time
-                    target_ts = now_ts_tf - tf_secs
-                    avail_ts  = sorted(snapshots.keys())
-                    if avail_ts:
-                        # Closest to target_ts
-                        ref_ts   = min(avail_ts, key=lambda t: abs(t - target_ts))
-                        ref_snap = snapshots[ref_ts]
-                        curr_snap = snapshots[max(avail_ts)]  # Most recent
-                        age_mins = round((now_ts_tf - ref_ts) / 60, 0)
-                        tf_label_str = f"{sel_tf} (ref: {int(age_mins)} min ago)"
-                        for _, row in df_d.iterrows():
-                            s = int(row["Strike"])
-                            curr_c = int(row.get("Call OI", 0))
-                            curr_p = int(row.get("Put OI", 0))
-                            ref_entry = ref_snap.get(s) or ref_snap.get(str(s)) or {}
-                            ref_c = int(ref_entry.get("call_oi", curr_c))
-                            ref_p = int(ref_entry.get("put_oi", curr_p))
-                            tf_call_chg[s] = curr_c - ref_c
-                            tf_put_chg[s]  = curr_p - ref_p
-                    else:
-                        for _, row in df_d.iterrows():
-                            s = int(row["Strike"])
-                            tf_call_chg[s] = int(row.get("Call OI Change", 0))
-                            tf_put_chg[s]  = int(row.get("Put OI Change", 0))
-
-                # Map timeframe changes back to df_d columns for chart
+                # df_d columns for chart
                 df_d = df_d.copy()
-                df_d["TF Call OI Change"] = df_d["Strike"].apply(lambda s: tf_call_chg.get(int(s), 0))
-                df_d["TF Put OI Change"]  = df_d["Strike"].apply(lambda s: tf_put_chg.get(int(s), 0))
-
-                # ── Timeframe OI summary badges ────────────────
-                net_tf_call = sum(tf_call_chg.values())
-                net_tf_put  = sum(tf_put_chg.values())
+                df_d["TF Call OI Change"] = df_d["Call OI Change"]
+                df_d["TF Put OI Change"]  = df_d["Put OI Change"]
+                net_tf_call = int(df_d["TF Call OI Change"].sum())
+                net_tf_put  = int(df_d["TF Put OI Change"].sum())
                 nc_col = "#ff5252" if net_tf_call >= 0 else "#00e676"
                 np_col = "#00e676" if net_tf_put  >= 0 else "#ff5252"
-                nc_lbl = "Bears adding" if net_tf_call > 0 else "Bears covering"
-                np_lbl = "Bulls adding" if net_tf_put  > 0 else "Bulls covering"
-
-                if tf_secs > 0 and snapshots:
-                    snap_count = len(snapshots)
-                    if snap_count < 2:
-                        st.markdown(f'<div style="background:#ff990022;border:1px solid #ff990060;border-radius:6px;padding:6px 14px;font-size:11px;color:#ff9900;margin-bottom:8px">⏳ Timeframe data collect ho raha hai — {snap_count} snapshot hai, zyada refreshes ke baad {sel_tf} data milega</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div style="background:#1d4ed820;border:1px solid #1d4ed860;border-radius:6px;padding:6px 14px;font-size:11px;color:#60a5fa;margin-bottom:6px">⏱️ Timeframe: <b>{tf_label_str}</b> &nbsp;|&nbsp; {snap_count} snapshots available</div>', unsafe_allow_html=True)
+                nc_lbl = "Bears active" if net_tf_call > 0 else "Bears covering"
+                np_lbl = "Bulls active" if net_tf_put  > 0 else "Bulls covering"
+                tf_label_str = "Last refresh"
 
                 # OI Chart
                 fig_oi = go.Figure()
@@ -2631,7 +2570,7 @@ for tab, instrument, name, spot in [
                     </div>
                     """, unsafe_allow_html=True)
 
-                    chart_title = f"<b>{name} OI Change ({tf_label_str}) — Kitna Badha / Ghata</b>"
+                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
                     y_title = "OI Change"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
