@@ -609,8 +609,6 @@ for key, val in [
     ("cache_timestamp",  ""),
     ("oi_wall_ticker",   []),   # [{name, resistance, res_oi, support, sup_oi, updated}]
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
-    # ── OI Timeline Snapshots — har timeframe ke liye ──
-    ("oi_snapshots",     {}),   # {instrument_key: {timestamp: {strike: {call_oi, put_oi}}}}
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -1219,25 +1217,6 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
             print(f"[INFO] OI cache saved: {len(curr_oi)} strikes")
         except Exception as e:
             print(f"[WARN] OI cache save failed: {e}")
-
-    # ── OI Timeline Snapshots — multiple timeframes ke liye ──────
-    # Har refresh pe current OI timestamp ke saath save karo
-    if curr_oi:
-        instr_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX")
-        snap_key = f"oi_snap_{instr_name}"
-        now_ts_snap = int(time.time())
-        if "oi_snapshots" not in st.session_state:
-            st.session_state["oi_snapshots"] = {}
-        if snap_key not in st.session_state["oi_snapshots"]:
-            st.session_state["oi_snapshots"][snap_key] = {}
-        # Save snapshot with timestamp
-        st.session_state["oi_snapshots"][snap_key][now_ts_snap] = dict(curr_oi)
-        # Cleanup: sirf last 5 hours ke snapshots rakho (memory)
-        cutoff = now_ts_snap - (5 * 3600)
-        st.session_state["oi_snapshots"][snap_key] = {
-            ts: snap for ts, snap in st.session_state["oi_snapshots"][snap_key].items()
-            if ts >= cutoff
-        }
 
     # ── Daily OI History save karo — 3:15 PM ke baad ─────────
     _now_ist = now_ist()
@@ -2490,18 +2469,6 @@ for tab, instrument, name, spot in [
                     key=f"chart_mode_{name}"
                 )
 
-                # df_d columns for chart
-                df_d = df_d.copy()
-                df_d["TF Call OI Change"] = df_d["Call OI Change"]
-                df_d["TF Put OI Change"]  = df_d["Put OI Change"]
-                net_tf_call = int(df_d["TF Call OI Change"].sum())
-                net_tf_put  = int(df_d["TF Put OI Change"].sum())
-                nc_col = "#ff5252" if net_tf_call >= 0 else "#00e676"
-                np_col = "#00e676" if net_tf_put  >= 0 else "#ff5252"
-                nc_lbl = "Bears active" if net_tf_call > 0 else "Bears covering"
-                np_lbl = "Bulls active" if net_tf_put  > 0 else "Bulls covering"
-                tf_label_str = "Last refresh"
-
                 # OI Chart
                 fig_oi = go.Figure()
 
@@ -2521,11 +2488,15 @@ for tab, instrument, name, spot in [
                     y_title = "Open Interest"
 
                 else:
-                    # ── OI Change — Timeframe based ───────────
-                    call_inc = df_d["TF Call OI Change"].clip(lower=0)
-                    call_dec = df_d["TF Call OI Change"].clip(upper=0).abs()
-                    put_inc  = df_d["TF Put OI Change"].clip(lower=0)
-                    put_dec  = df_d["TF Put OI Change"].clip(upper=0).abs()
+                    # ── OI Change — Increase/Decrease alag alag ──
+                    # Call OI Increase (positive change) — solid red
+                    call_inc = df_d["Call OI Change"].clip(lower=0)
+                    # Call OI Decrease (negative change) — hatched/light red
+                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
+                    # Put OI Increase (positive change) — solid green
+                    put_inc  = df_d["Put OI Change"].clip(lower=0)
+                    # Put OI Decrease (negative change) — hatched/light green
+                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
 
                     fig_oi.add_trace(go.Bar(
                         x=df_d["Strike"], y=call_inc,
@@ -2554,18 +2525,20 @@ for tab, instrument, name, spot in [
                         hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
                     ))
 
-                    # Net OI change summary — timeframe based
-                    net_col_c = "#ff5252" if net_tf_call >= 0 else "#00e676"
-                    net_col_p = "#00e676" if net_tf_put  >= 0 else "#ff5252"
+                    # Net OI change summary
+                    net_call = int(df_d["Call OI Change"].sum())
+                    net_put  = int(df_d["Put OI Change"].sum())
+                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
+                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
                     st.markdown(f"""
                     <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
                       <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_tf_call>=0 else ""}{net_tf_call:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{nc_lbl}</span>
+                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
                       </div>
                       <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_tf_put>=0 else ""}{net_tf_put:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{np_lbl}</span>
+                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
                       </div>
                     </div>
                     """, unsafe_allow_html=True)
