@@ -472,13 +472,28 @@ st.markdown("""
     }
 
     /* ══ EXPANDER ══ */
-    .streamlit-expanderHeader {
-        background: linear-gradient(90deg, #0f1e35 0%, #091525 100%);
-        border-radius: 10px;
-        border: 1px solid rgba(29,78,216,0.2);
-        color: #90b8d8;
-        font-family: 'Inter', sans-serif;
-        font-weight: 600;
+    .streamlit-expanderHeader,
+    [data-testid="stExpander"] summary,
+    details > summary {
+        background: linear-gradient(90deg, #1a3a6e 0%, #0f2348 100%) !important;
+        border-radius: 10px !important;
+        border: 1.5px solid rgba(29,78,216,0.6) !important;
+        color: #e8f4ff !important;
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+        padding: 12px 18px !important;
+    }
+    [data-testid="stExpander"] summary:hover,
+    details > summary:hover {
+        background: linear-gradient(90deg, #1d4ed8 0%, #1a3a6e 100%) !important;
+        border-color: #3b82f6 !important;
+        color: #ffffff !important;
+    }
+    [data-testid="stExpander"] {
+        border: 1px solid rgba(29,78,216,0.25) !important;
+        border-radius: 10px !important;
+        background: #0a1220 !important;
     }
 
     /* ══ DIVIDER ══ */
@@ -968,24 +983,80 @@ def get_option_chain(token, instrument, selected_expiry=None, all_exp=None):
         return None, selected_expiry
 
 def get_fii_dii_data():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    """FII/DII data — NSE se try karo, fail pe alternate sources"""
+
+    base_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.nseindia.com/market-data/fii-dii-activity",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
     }
+
+    # ── Source 1: NSE India (primary) ────────────────────────
     try:
         session = requests.Session()
-        session.get("https://www.nseindia.com", headers=headers, timeout=3)
-        session.get("https://www.nseindia.com/market-data/fii-dii-activity", headers=headers, timeout=3)
-        ts = int(time.time() * 1000)
-        resp = session.get(f"https://www.nseindia.com/api/fiidiiTradeReact?_={ts}", headers=headers, timeout=3)
-        if resp.status_code == 200 and resp.json(): return resp.json()
-    except requests.exceptions.ConnectionError:
-        print("[WARN] FII/DII fetch failed: NSE India blocked/unreachable on this network (DNS error)")
-    except requests.exceptions.Timeout:
-        print("[WARN] FII/DII fetch failed: Timeout")
+        session.headers.update(base_headers)
+        session.get("https://www.nseindia.com", timeout=5)
+        session.get("https://www.nseindia.com/market-data/fii-dii-activity",
+                    headers={**base_headers, "Referer": "https://www.nseindia.com/"}, timeout=5)
+        ts   = int(time.time() * 1000)
+        resp = session.get(
+            f"https://www.nseindia.com/api/fiidiiTradeReact?_={ts}",
+            headers={**base_headers, "Referer": "https://www.nseindia.com/market-data/fii-dii-activity"},
+            timeout=8)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and len(data) > 0:
+                print("[INFO] FII/DII: NSE source OK")
+                return data
     except Exception as e:
-        print(f"[WARN] FII/DII fetch failed: {e}")
+        print(f"[WARN] FII/DII NSE failed: {e}")
+
+    # ── Source 2: NSE alternate API endpoint ─────────────────
+    try:
+        session2 = requests.Session()
+        session2.headers.update(base_headers)
+        session2.get("https://www.nseindia.com", timeout=5)
+        resp2 = session2.get(
+            "https://www.nseindia.com/api/fiidiiTradeReact",
+            headers={**base_headers, "Referer": "https://www.nseindia.com/"},
+            timeout=8)
+        if resp2.status_code == 200:
+            data2 = resp2.json()
+            if data2 and len(data2) > 0:
+                print("[INFO] FII/DII: NSE alt endpoint OK")
+                return data2
+    except Exception as e:
+        print(f"[WARN] FII/DII NSE alt failed: {e}")
+
+    # ── Source 3: Constructed fallback — last known reasonable data ──
+    # Jab koi bhi source kaam na kare — cached/static data dikhao
+    try:
+        today_str = now_ist().strftime("%d-%b-%Y")
+        fallback_data = [
+            {
+                "category": "FII",
+                "date": today_str,
+                "buyValue": 0,
+                "sellValue": 0,
+                "netValue": 0,
+                "_source": "unavailable"
+            },
+            {
+                "category": "DII",
+                "date": today_str,
+                "buyValue": 0,
+                "sellValue": 0,
+                "netValue": 0,
+                "_source": "unavailable"
+            }
+        ]
+        print("[WARN] FII/DII: All sources failed — returning empty fallback")
+        return fallback_data
+    except Exception:
+        pass
+
     return None
 
 def extract_ltp(data, instrument):
@@ -2721,6 +2792,24 @@ if fii_dii:
             buy_val  = float(row.get("buyvalue",  0) or 0)
             sell_val = float(row.get("sellvalue", 0) or 0)
             net_val  = float(row.get("netvalue",  0) or 0)
+            is_unavailable = str(row.get("_source","")) == "unavailable"
+
+            # Agar data unavailable hai — placeholder card dikhao
+            if is_unavailable:
+                icon = "🏦" if "FII" in category else "🏢"
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#0f1e35 0%,#080e1e 100%);border-radius:14px;padding:18px 22px;margin:10px 0;border:1px solid rgba(255,153,0,0.2)">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <div style="font-size:17px;font-weight:800;color:#c8dff5">{icon} {category}</div>
+                    <div style="font-size:10px;color:#ff9900;background:rgba(255,153,0,0.1);padding:3px 10px;border-radius:20px;border:1px solid rgba(255,153,0,0.3)">⏳ Data unavailable</div>
+                  </div>
+                  <div style="font-size:12px;color:#ff9900;background:#ff990015;border:1px solid #ff990030;border-radius:8px;padding:10px 14px">
+                    NSE India ka server Streamlit Cloud pe data restrict karta hai.<br>
+                    <span style="color:#6495b8;font-size:11px">Local machine pe run karo toh sahi data aayega — ya thodi der mein Refresh try karo.</span>
+                  </div>
+                </div>""", unsafe_allow_html=True)
+                continue
+
             is_pos   = net_val >= 0
             net_color  = "#00e676" if is_pos else "#ff5252"
             net_bg     = "#00e67622" if is_pos else "#ff525222"
@@ -2753,7 +2842,19 @@ if fii_dii:
     except Exception as e:
         st.warning(f"FII/DII display error: {e}")
 else:
-    st.markdown('<div style="background:#ff525222;border:1.5px solid #ff5252;border-radius:8px;padding:14px;font-size:13px;color:#ff8888">❌ FII/DII data fetch nahi hua — Refresh try karo.</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="background:#1a120022;border:1.5px solid #ff990050;border-radius:10px;padding:16px 20px;font-size:13px">
+      <div style="color:#ff9900;font-weight:700;margin-bottom:6px">⚠️ FII/DII Data Abhi Available Nahi</div>
+      <div style="color:#8ab8d8;font-size:12px;line-height:1.6">
+        NSE India ka server Streamlit Cloud pe direct access block karta hai.<br>
+        <b style="color:#ffd600">Solutions:</b><br>
+        &nbsp; 1. <b style="color:#60a5fa">Local machine pe run karo</b> — wahan sahi kaam karega<br>
+        &nbsp; 2. Thodi der baad <b>🔄 FII/DII Refresh</b> dabao<br>
+        &nbsp; 3. NSE website pe manually check karo:
+        <a href="https://www.nseindia.com/market-data/fii-dii-activity" target="_blank"
+           style="color:#60a5fa">nseindia.com/market-data/fii-dii-activity</a>
+      </div>
+    </div>""", unsafe_allow_html=True)
 
 st.markdown("---")
 st.caption("⚠️ Sirf educational purpose. Trading apni responsibility par karein.")
@@ -2832,7 +2933,17 @@ with col_tj4:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Add New Trade Form ─────────────────────────────────────────
-with st.expander("➕ Naya Trade Add Karo", expanded=False):
+st.markdown("""
+<div style="background:linear-gradient(90deg,#1d4ed820 0%,#1d4ed805 100%);
+    border:1.5px solid #1d4ed880;border-radius:10px;
+    padding:10px 18px;margin-bottom:6px;
+    display:flex;align-items:center;gap:10px">
+  <span style="font-size:18px">➕</span>
+  <span style="color:#60a5fa;font-size:14px;font-weight:700;letter-spacing:0.5px">Naya Trade Add Karo</span>
+  <span style="color:#4e7a96;font-size:11px;margin-left:auto">Neeche arrow dabao ▼</span>
+</div>""", unsafe_allow_html=True)
+
+with st.expander("➕ Trade Form Kholein", expanded=False):
     with st.form("trade_journal_form", clear_on_submit=True):
         fcol1, fcol2, fcol3 = st.columns(3)
         with fcol1:
