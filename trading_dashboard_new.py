@@ -25,8 +25,149 @@ def now_ist():
 # ── OI History — 7 days data save/load ───────────────────────
 OI_HISTORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "oi_history")
 
-def ensure_history_dir():
-    os.makedirs(OI_HISTORY_DIR, exist_ok=True)
+# ══════════════════════════════════════════════════════════════
+# 💾 LOCAL DATA SAVER — Sab data local CSV mein save karo
+# ══════════════════════════════════════════════════════════════
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saved_data")
+
+def ensure_data_dir():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "prices"),        exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "options_chain"), exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "oi_snapshots"),  exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "fii_dii"),       exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "vix"),           exist_ok=True)
+
+def save_prices_locally(nifty, banknifty, sensex, vix=None):
+    """Live prices CSV mein append karo — har refresh pe"""
+    ensure_data_dir()
+    try:
+        fpath     = os.path.join(DATA_DIR, "prices", "live_prices.csv")
+        ts        = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+        date_str  = now_ist().strftime("%Y-%m-%d")
+        file_exists = os.path.exists(fpath)
+        with open(fpath, "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["timestamp","date","nifty","banknifty","sensex","india_vix"])
+            writer.writerow([ts, date_str,
+                             round(nifty,2)     if nifty     else "",
+                             round(banknifty,2) if banknifty else "",
+                             round(sensex,2)    if sensex    else "",
+                             round(vix,2)       if vix       else ""])
+    except Exception as e:
+        print(f"[WARN] save_prices_locally failed: {e}")
+
+def save_options_chain_locally(instrument_name, chain_rows):
+    """Options chain CSV mein save karo — har expiry fetch ke baad"""
+    ensure_data_dir()
+    try:
+        ts       = now_ist().strftime("%Y%m%d_%H%M%S")
+        date_str = now_ist().strftime("%Y-%m-%d")
+        fname    = f"{instrument_name}_{date_str}.csv"
+        fpath    = os.path.join(DATA_DIR, "options_chain", fname)
+        file_exists = os.path.exists(fpath)
+        if chain_rows:
+            with open(fpath, "a", newline="") as f:
+                fieldnames = ["timestamp"] + list(chain_rows[0].keys())
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                if not file_exists:
+                    writer.writeheader()
+                for row in chain_rows:
+                    writer.writerow({"timestamp": ts, **row})
+        print(f"[INFO] Options chain saved: {fname} ({len(chain_rows)} rows)")
+    except Exception as e:
+        print(f"[WARN] save_options_chain_locally failed: {e}")
+
+def save_oi_snapshot_locally(instrument_name, oi_data_rows):
+    """OI snapshot CSV mein append karo — timestamps ke saath"""
+    ensure_data_dir()
+    try:
+        ts       = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+        date_str = now_ist().strftime("%Y-%m-%d")
+        fname    = f"{instrument_name}_OI_{date_str}.csv"
+        fpath    = os.path.join(DATA_DIR, "oi_snapshots", fname)
+        file_exists = os.path.exists(fpath)
+        with open(fpath, "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["timestamp","strike","call_oi","put_oi","call_ltp","put_ltp","call_oi_chg","put_oi_chg"])
+            for row in oi_data_rows:
+                writer.writerow([
+                    ts,
+                    row.get("Strike",""),
+                    row.get("Call OI",""),
+                    row.get("Put OI",""),
+                    row.get("Call LTP",""),
+                    row.get("Put LTP",""),
+                    row.get("Call OI Change",""),
+                    row.get("Put OI Change",""),
+                ])
+        print(f"[INFO] OI snapshot saved: {fname}")
+    except Exception as e:
+        print(f"[WARN] save_oi_snapshot_locally failed: {e}")
+
+def save_fii_dii_locally(fii_dii_data):
+    """FII/DII data CSV mein append karo"""
+    ensure_data_dir()
+    try:
+        fpath = os.path.join(DATA_DIR, "fii_dii", "fii_dii_history.csv")
+        ts    = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+        file_exists = os.path.exists(fpath)
+        with open(fpath, "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["timestamp","category","date","buy_cr","sell_cr","net_cr"])
+            for item in fii_dii_data:
+                cat      = str(item.get("category","")).upper()
+                date_val = item.get("date","")
+                buy_val  = item.get("buyValue",  item.get("buyvalue",  0))
+                sell_val = item.get("sellValue", item.get("sellvalue", 0))
+                net_val  = item.get("netValue",  item.get("netvalue",  0))
+                if str(item.get("_source","")) != "unavailable" and float(net_val or 0) != 0:
+                    writer.writerow([ts, cat, date_val,
+                                     round(float(buy_val),2),
+                                     round(float(sell_val),2),
+                                     round(float(net_val),2)])
+        print("[INFO] FII/DII saved locally")
+    except Exception as e:
+        print(f"[WARN] save_fii_dii_locally failed: {e}")
+
+def save_vix_locally(vix_val, vix_change=None):
+    """India VIX history CSV mein save karo"""
+    ensure_data_dir()
+    try:
+        fpath = os.path.join(DATA_DIR, "vix", "vix_history.csv")
+        ts    = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+        file_exists = os.path.exists(fpath)
+        with open(fpath, "a", newline="") as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["timestamp","vix","change"])
+            writer.writerow([ts, round(float(vix_val),2), round(float(vix_change or 0),2)])
+    except Exception as e:
+        print(f"[WARN] save_vix_locally failed: {e}")
+
+def get_saved_data_summary():
+    """Saved data ka summary return karo"""
+    ensure_data_dir()
+    summary = {}
+    for folder in ["prices","options_chain","oi_snapshots","fii_dii","vix"]:
+        fdir  = os.path.join(DATA_DIR, folder)
+        files = [f for f in os.listdir(fdir) if f.endswith(".csv")] if os.path.exists(fdir) else []
+        total_rows = 0
+        total_size = 0
+        for fname in files:
+            fpath = os.path.join(fdir, fname)
+            total_size += os.path.getsize(fpath)
+            try:
+                with open(fpath,"r") as f:
+                    total_rows += max(0, sum(1 for _ in f) - 1)
+            except: pass
+        summary[folder] = {"files": len(files), "rows": total_rows, "size_kb": round(total_size/1024,1)}
+    return summary
+
+
 
 def cleanup_old_history():
     """2 weeks se purana data delete karo — month end pe automatically"""
@@ -609,6 +750,8 @@ for key, val in [
     ("cache_timestamp",  ""),
     ("oi_wall_ticker",   []),   # [{name, resistance, res_oi, support, sup_oi, updated}]
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
+    # ── OI Timeline Snapshots — har timeframe ke liye ──
+    ("oi_snapshots",     {}),   # {instrument_key: {timestamp: {strike: {call_oi, put_oi}}}}
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -1218,6 +1361,25 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
         except Exception as e:
             print(f"[WARN] OI cache save failed: {e}")
 
+    # ── OI Timeline Snapshots — multiple timeframes ke liye ──────
+    # Har refresh pe current OI timestamp ke saath save karo
+    if curr_oi:
+        instr_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX")
+        snap_key = f"oi_snap_{instr_name}"
+        now_ts_snap = int(time.time())
+        if "oi_snapshots" not in st.session_state:
+            st.session_state["oi_snapshots"] = {}
+        if snap_key not in st.session_state["oi_snapshots"]:
+            st.session_state["oi_snapshots"][snap_key] = {}
+        # Save snapshot with timestamp
+        st.session_state["oi_snapshots"][snap_key][now_ts_snap] = dict(curr_oi)
+        # Cleanup: sirf last 5 hours ke snapshots rakho (memory)
+        cutoff = now_ts_snap - (5 * 3600)
+        st.session_state["oi_snapshots"][snap_key] = {
+            ts: snap for ts, snap in st.session_state["oi_snapshots"][snap_key].items()
+            if ts >= cutoff
+        }
+
     # ── Daily OI History save karo — 3:15 PM ke baad ─────────
     _now_ist = now_ist()
     if curr_oi and _now_ist.hour >= 15 and _now_ist.minute >= 15:
@@ -1734,6 +1896,35 @@ with st.sidebar:
     st.markdown("1. @BotFather se bot banao")
     st.markdown("2. @userinfobot se Chat ID lo")
     st.markdown("3. Upar fill karo aur Save karo")
+
+    # ── 💾 Local Data Summary ──────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 💾 Local Saved Data")
+    try:
+        summary = get_saved_data_summary()
+        folder_icons = {
+            "prices":        ("⚡", "Live Prices"),
+            "options_chain": ("📋", "Options Chain"),
+            "oi_snapshots":  ("📊", "OI Snapshots"),
+            "fii_dii":       ("🏦", "FII / DII"),
+            "vix":           ("😨", "India VIX"),
+        }
+        for folder, (icon, label) in folder_icons.items():
+            info = summary.get(folder, {})
+            rows = info.get("rows", 0)
+            size = info.get("size_kb", 0)
+            col_r = "#00e676" if rows > 0 else "#6495b8"
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1d4ed820;font-size:12px">'
+                f'<span style="color:#90b8d8">{icon} {label}</span>'
+                f'<span style="color:{col_r};font-weight:600">{rows:,} rows &nbsp; <span style="color:#4e7a96;font-weight:400">{size} KB</span></span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        data_path = DATA_DIR
+        st.markdown(f'<div style="font-size:10px;color:#4e7a96;margin-top:8px;word-break:break-all">📁 {data_path}</div>', unsafe_allow_html=True)
+    except Exception as _se:
+        st.markdown('<div style="font-size:11px;color:#6495b8">Data saving shuru hogi jab market data aayega</div>', unsafe_allow_html=True)
 st.markdown("---")
 
 # ══════════════════════════════════════════════════════════════
@@ -1778,6 +1969,12 @@ if not ltp_data and not quote_data:
 nifty_price     = extract_ltp(ltp_data, "NSE_INDEX|Nifty 50")
 banknifty_price = extract_ltp(ltp_data, "NSE_INDEX|Nifty Bank")
 sensex_price    = extract_ltp(ltp_data, "BSE_INDEX|SENSEX")
+
+# 💾 Live prices locally save karo
+if nifty_price or banknifty_price:
+    _vix_val = st.session_state.get("cache_vix")
+    _vix_num = _vix_val.get("last") if isinstance(_vix_val, dict) else None
+    save_prices_locally(nifty_price, banknifty_price, sensex_price, _vix_num)
 
 # Aaj ka OHLC — dedicated endpoint se
 nifty_open,  nifty_high,  nifty_low,  nifty_close  = extract_ohlc(ohlc_data, "NSE_INDEX|Nifty 50")
@@ -1921,6 +2118,8 @@ with col4:
     if vix_data and vix_data.get("last"):
         vix_val   = vix_data["last"]
         vix_chg   = vix_data.get("pchange", 0) or 0
+        # 💾 VIX locally save karo
+        save_vix_locally(vix_val, vix_chg)
         vix_col   = "#ff5252" if vix_val > 20 else ("#ffd600" if vix_val > 15 else "#00e676")
         vix_mood  = "😱 HIGH FEAR" if vix_val > 20 else ("⚠️ CAUTION" if vix_val > 15 else "😊 LOW FEAR")
         vix_arrow = "▲" if vix_chg >= 0 else "▼"
@@ -2030,6 +2229,28 @@ for tab, instrument, name, spot in [
         result = calculate_analysis(chain_data, spot, expiry)
         if not result:
             continue
+
+        # 💾 OI Snapshot aur Options Chain locally save karo
+        try:
+            _df_save = result.get("df")
+            if _df_save is not None and not _df_save.empty:
+                save_oi_snapshot_locally(name.replace(" ","_"), _df_save.to_dict("records"))
+            if chain_data:
+                _chain_rows = []
+                for _row in chain_data:
+                    _chain_rows.append({
+                        "strike":    _row.get("strike_price",""),
+                        "call_ltp":  _row.get("CE",{}).get("lastPrice",""),
+                        "call_oi":   _row.get("CE",{}).get("openInterest",""),
+                        "call_iv":   _row.get("CE",{}).get("impliedVolatility",""),
+                        "put_ltp":   _row.get("PE",{}).get("lastPrice",""),
+                        "put_oi":    _row.get("PE",{}).get("openInterest",""),
+                        "put_iv":    _row.get("PE",{}).get("impliedVolatility",""),
+                        "expiry":    expiry,
+                    })
+                save_options_chain_locally(name.replace(" ","_"), _chain_rows)
+        except Exception as _e:
+            print(f"[WARN] Local save failed: {_e}")
 
         # ── OI Wall Ticker update — har 3 min ────────────────
         now_ts = time.time()
@@ -2469,6 +2690,18 @@ for tab, instrument, name, spot in [
                     key=f"chart_mode_{name}"
                 )
 
+                # df_d columns for chart
+                df_d = df_d.copy()
+                df_d["TF Call OI Change"] = df_d["Call OI Change"]
+                df_d["TF Put OI Change"]  = df_d["Put OI Change"]
+                net_tf_call = int(df_d["TF Call OI Change"].sum())
+                net_tf_put  = int(df_d["TF Put OI Change"].sum())
+                nc_col = "#ff5252" if net_tf_call >= 0 else "#00e676"
+                np_col = "#00e676" if net_tf_put  >= 0 else "#ff5252"
+                nc_lbl = "Bears active" if net_tf_call > 0 else "Bears covering"
+                np_lbl = "Bulls active" if net_tf_put  > 0 else "Bulls covering"
+                tf_label_str = "Last refresh"
+
                 # OI Chart
                 fig_oi = go.Figure()
 
@@ -2488,15 +2721,11 @@ for tab, instrument, name, spot in [
                     y_title = "Open Interest"
 
                 else:
-                    # ── OI Change — Increase/Decrease alag alag ──
-                    # Call OI Increase (positive change) — solid red
-                    call_inc = df_d["Call OI Change"].clip(lower=0)
-                    # Call OI Decrease (negative change) — hatched/light red
-                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
-                    # Put OI Increase (positive change) — solid green
-                    put_inc  = df_d["Put OI Change"].clip(lower=0)
-                    # Put OI Decrease (negative change) — hatched/light green
-                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
+                    # ── OI Change — Timeframe based ───────────
+                    call_inc = df_d["TF Call OI Change"].clip(lower=0)
+                    call_dec = df_d["TF Call OI Change"].clip(upper=0).abs()
+                    put_inc  = df_d["TF Put OI Change"].clip(lower=0)
+                    put_dec  = df_d["TF Put OI Change"].clip(upper=0).abs()
 
                     fig_oi.add_trace(go.Bar(
                         x=df_d["Strike"], y=call_inc,
@@ -2525,20 +2754,18 @@ for tab, instrument, name, spot in [
                         hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
                     ))
 
-                    # Net OI change summary
-                    net_call = int(df_d["Call OI Change"].sum())
-                    net_put  = int(df_d["Put OI Change"].sum())
-                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
-                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
+                    # Net OI change summary — timeframe based
+                    net_col_c = "#ff5252" if net_tf_call >= 0 else "#00e676"
+                    net_col_p = "#00e676" if net_tf_put  >= 0 else "#ff5252"
                     st.markdown(f"""
                     <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
                       <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
+                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_tf_call>=0 else ""}{net_tf_call:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{nc_lbl}</span>
                       </div>
                       <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
+                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_tf_put>=0 else ""}{net_tf_put:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{np_lbl}</span>
                       </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -2815,6 +3042,10 @@ with col_fii2:
 
 with st.spinner("FII/DII data la raha hoon..."):
     fii_dii = safe_api_call(get_fii_dii_data, fallback=None)
+
+# 💾 FII/DII locally save karo
+if fii_dii:
+    save_fii_dii_locally(fii_dii)
 
 if fii_dii:
     try:
