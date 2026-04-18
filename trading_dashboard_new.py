@@ -609,6 +609,8 @@ for key, val in [
     ("cache_timestamp",  ""),
     ("oi_wall_ticker",   []),   # [{name, resistance, res_oi, support, sup_oi, updated}]
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
+    # ── OI Timeline Snapshots — har timeframe ke liye ──
+    ("oi_snapshots",     {}),   # {instrument_key: {timestamp: {strike: {call_oi, put_oi}}}}
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -1217,6 +1219,24 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
             print(f"[INFO] OI cache saved: {len(curr_oi)} strikes")
         except Exception as e:
             print(f"[WARN] OI cache save failed: {e}")
+
+    # ── OI Timeline Snapshots — multiple timeframes ke liye ──────
+    # Har refresh pe current OI timestamp ke saath save karo
+    if curr_oi:
+        snap_key = f"oi_snap_{int(first_strike) if first_strike else 'x'}"
+        now_ts_snap = int(time.time())
+        if "oi_snapshots" not in st.session_state:
+            st.session_state["oi_snapshots"] = {}
+        if snap_key not in st.session_state["oi_snapshots"]:
+            st.session_state["oi_snapshots"][snap_key] = {}
+        # Save snapshot with timestamp
+        st.session_state["oi_snapshots"][snap_key][now_ts_snap] = dict(curr_oi)
+        # Cleanup: sirf last 5 hours ke snapshots rakho (memory)
+        cutoff = now_ts_snap - (5 * 3600)
+        st.session_state["oi_snapshots"][snap_key] = {
+            ts: snap for ts, snap in st.session_state["oi_snapshots"][snap_key].items()
+            if ts >= cutoff
+        }
 
     # ── Daily OI History save karo — 3:15 PM ke baad ─────────
     _now_ist = now_ist()
@@ -2469,6 +2489,79 @@ for tab, instrument, name, spot in [
                     key=f"chart_mode_{name}"
                 )
 
+                # ── OI Timeframe Selector ──────────────────────
+                tf_labels   = ["Last refresh", "5 min", "15 min", "30 min", "1 hr", "2 hr", "3 hr", "4 hr", "Full Day"]
+                tf_seconds  = [0, 300, 900, 1800, 3600, 7200, 10800, 14400, 86400]
+
+                sel_tf = st.select_slider(
+                    "⏱️ OI Change Timeframe:",
+                    options=tf_labels,
+                    value="Last refresh",
+                    key=f"oi_tf_{name}"
+                )
+                tf_secs = tf_seconds[tf_labels.index(sel_tf)]
+
+                # ── Calculate OI diff for selected timeframe ───
+                snap_key = f"oi_snap_{int(first_strike) if first_strike else 'x'}"
+                snapshots = st.session_state.get("oi_snapshots", {}).get(snap_key, {})
+                now_ts_tf = int(time.time())
+
+                tf_call_chg = {}
+                tf_put_chg  = {}
+                tf_label_str = sel_tf
+
+                if tf_secs == 0 or not snapshots:
+                    # Last refresh — existing OI change use karo
+                    for _, row in df_d.iterrows():
+                        s = int(row["Strike"])
+                        tf_call_chg[s] = int(row.get("Call OI Change", 0))
+                        tf_put_chg[s]  = int(row.get("Put OI Change", 0))
+                else:
+                    # Find closest snapshot to target time
+                    target_ts = now_ts_tf - tf_secs
+                    avail_ts  = sorted(snapshots.keys())
+                    if avail_ts:
+                        # Closest to target_ts
+                        ref_ts   = min(avail_ts, key=lambda t: abs(t - target_ts))
+                        ref_snap = snapshots[ref_ts]
+                        curr_snap = snapshots[max(avail_ts)]  # Most recent
+                        age_mins = round((now_ts_tf - ref_ts) / 60, 0)
+                        tf_label_str = f"{sel_tf} (ref: {int(age_mins)} min ago)"
+                        for _, row in df_d.iterrows():
+                            s = int(row["Strike"])
+                            curr_c = int(row.get("Call OI", 0))
+                            curr_p = int(row.get("Put OI", 0))
+                            ref_entry = ref_snap.get(s) or ref_snap.get(str(s)) or {}
+                            ref_c = int(ref_entry.get("call_oi", curr_c))
+                            ref_p = int(ref_entry.get("put_oi", curr_p))
+                            tf_call_chg[s] = curr_c - ref_c
+                            tf_put_chg[s]  = curr_p - ref_p
+                    else:
+                        for _, row in df_d.iterrows():
+                            s = int(row["Strike"])
+                            tf_call_chg[s] = int(row.get("Call OI Change", 0))
+                            tf_put_chg[s]  = int(row.get("Put OI Change", 0))
+
+                # Map timeframe changes back to df_d columns for chart
+                df_d = df_d.copy()
+                df_d["TF Call OI Change"] = df_d["Strike"].apply(lambda s: tf_call_chg.get(int(s), 0))
+                df_d["TF Put OI Change"]  = df_d["Strike"].apply(lambda s: tf_put_chg.get(int(s), 0))
+
+                # ── Timeframe OI summary badges ────────────────
+                net_tf_call = sum(tf_call_chg.values())
+                net_tf_put  = sum(tf_put_chg.values())
+                nc_col = "#ff5252" if net_tf_call >= 0 else "#00e676"
+                np_col = "#00e676" if net_tf_put  >= 0 else "#ff5252"
+                nc_lbl = "Bears adding" if net_tf_call > 0 else "Bears covering"
+                np_lbl = "Bulls adding" if net_tf_put  > 0 else "Bulls covering"
+
+                if tf_secs > 0 and snapshots:
+                    snap_count = len(snapshots)
+                    if snap_count < 2:
+                        st.markdown(f'<div style="background:#ff990022;border:1px solid #ff990060;border-radius:6px;padding:6px 14px;font-size:11px;color:#ff9900;margin-bottom:8px">⏳ Timeframe data collect ho raha hai — {snap_count} snapshot hai, zyada refreshes ke baad {sel_tf} data milega</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div style="background:#1d4ed820;border:1px solid #1d4ed860;border-radius:6px;padding:6px 14px;font-size:11px;color:#60a5fa;margin-bottom:6px">⏱️ Timeframe: <b>{tf_label_str}</b> &nbsp;|&nbsp; {snap_count} snapshots available</div>', unsafe_allow_html=True)
+
                 # OI Chart
                 fig_oi = go.Figure()
 
@@ -2488,15 +2581,11 @@ for tab, instrument, name, spot in [
                     y_title = "Open Interest"
 
                 else:
-                    # ── OI Change — Increase/Decrease alag alag ──
-                    # Call OI Increase (positive change) — solid red
-                    call_inc = df_d["Call OI Change"].clip(lower=0)
-                    # Call OI Decrease (negative change) — hatched/light red
-                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
-                    # Put OI Increase (positive change) — solid green
-                    put_inc  = df_d["Put OI Change"].clip(lower=0)
-                    # Put OI Decrease (negative change) — hatched/light green
-                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
+                    # ── OI Change — Timeframe based ───────────
+                    call_inc = df_d["TF Call OI Change"].clip(lower=0)
+                    call_dec = df_d["TF Call OI Change"].clip(upper=0).abs()
+                    put_inc  = df_d["TF Put OI Change"].clip(lower=0)
+                    put_dec  = df_d["TF Put OI Change"].clip(upper=0).abs()
 
                     fig_oi.add_trace(go.Bar(
                         x=df_d["Strike"], y=call_inc,
@@ -2525,25 +2614,23 @@ for tab, instrument, name, spot in [
                         hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
                     ))
 
-                    # Net OI change summary
-                    net_call = int(df_d["Call OI Change"].sum())
-                    net_put  = int(df_d["Put OI Change"].sum())
-                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
-                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
+                    # Net OI change summary — timeframe based
+                    net_col_c = "#ff5252" if net_tf_call >= 0 else "#00e676"
+                    net_col_p = "#00e676" if net_tf_put  >= 0 else "#ff5252"
                     st.markdown(f"""
                     <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
                       <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
+                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_tf_call>=0 else ""}{net_tf_call:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{nc_lbl}</span>
                       </div>
                       <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
+                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_tf_put>=0 else ""}{net_tf_put:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{np_lbl}</span>
                       </div>
                     </div>
                     """, unsafe_allow_html=True)
 
-                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
+                    chart_title = f"<b>{name} OI Change ({tf_label_str}) — Kitna Badha / Ghata</b>"
                     y_title = "OI Change"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
