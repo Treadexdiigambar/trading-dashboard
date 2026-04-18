@@ -1233,8 +1233,9 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
             print(f"[WARN] Daily OI save failed: {e}")
 
         # ── Month end auto cleanup — last day of month ─────
-        last_day = calendar.monthrange(now_ist.year, now_ist.month)[1]
-        if now_ist.day == last_day:
+        _t = now_ist()
+        last_day = calendar.monthrange(_t.year, _t.month)[1]
+        if _t.day == last_day:
             print(f"[INFO] Month end detected — running auto cleanup...")
             cleanup_old_history()
     pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0
