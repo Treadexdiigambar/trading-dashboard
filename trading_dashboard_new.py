@@ -2715,21 +2715,23 @@ for tab, instrument, name, spot in [
                 top3_put  = df_d.nlargest(3, "Put OI")["Strike"].tolist()
 
                 # Bar colors — top strikes bright, baaki dim
-                call_colors = ["#ff2222" if s in top3_call else "#ff525260" for s in df_d["Strike"]]
-                put_colors  = ["#00ff88" if s in top3_put  else "#00e67660" for s in df_d["Strike"]]
+                call_colors = ["#ff2222" if s in top3_call else "#ff525255" for s in df_d["Strike"].tolist()]
+                put_colors  = ["#00ff88" if s in top3_put  else "#00e67655" for s in df_d["Strike"].tolist()]
 
                 # OI Chart
                 fig_oi = go.Figure()
                 fig_oi.add_trace(go.Bar(
-                    x=df_d["Strike"], y=df_d["Call OI"],
+                    x=df_d["Strike"].tolist(),
+                    y=df_d["Call OI"].tolist(),
                     name="Call OI (Resistance)",
-                    marker=dict(color=call_colors),
+                    marker_color=call_colors,
                     hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
                 ))
                 fig_oi.add_trace(go.Bar(
-                    x=df_d["Strike"], y=df_d["Put OI"],
+                    x=df_d["Strike"].tolist(),
+                    y=df_d["Put OI"].tolist(),
                     name="Put OI (Support)",
-                    marker=dict(color=put_colors),
+                    marker_color=put_colors,
                     hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
                 ))
                 chart_title = f"<b>{name} OI — Big Players Position</b>"
