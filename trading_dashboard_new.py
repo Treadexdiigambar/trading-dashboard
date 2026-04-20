@@ -25,8 +25,171 @@ def now_ist():
 # ── OI History — 7 days data save/load ───────────────────────
 OI_HISTORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "oi_history")
 
-def ensure_history_dir():
-    os.makedirs(OI_HISTORY_DIR, exist_ok=True)
+# ══════════════════════════════════════════════════════════════
+# 💾 LOCAL DATA SAVER — Sab data local Excel (.xlsx) mein save
+# ══════════════════════════════════════════════════════════════
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saved_data")
+
+def ensure_data_dir():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    for sub in ["prices", "options_chain", "oi_snapshots", "fii_dii", "vix"]:
+        os.makedirs(os.path.join(DATA_DIR, sub), exist_ok=True)
+
+def _xl_write(fpath, sheet_name, headers, row_data):
+    """Ek helper — xlsx file mein row append karo (ya nayi banao)"""
+    try:
+        import openpyxl
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+
+        # ── Colors ─────────────────────────────────────────────
+        HDR_BG   = PatternFill("solid", fgColor="0F1E35")
+        HDR_FONT = Font(color="90B8D8", bold=True, size=10)
+        ALT_BG   = PatternFill("solid", fgColor="060E1A")
+        ALT_BG2  = PatternFill("solid", fgColor="0A1525")
+        DEF_FONT = Font(color="C8DFF5", size=10)
+        THIN     = Side(style="thin", color="1D4ED8")
+        BORDER   = Border(bottom=Side(style="thin", color="0F2040"))
+
+        if os.path.exists(fpath):
+            wb = openpyxl.load_workbook(fpath)
+        else:
+            wb = openpyxl.Workbook()
+            # Remove default sheet
+            if "Sheet" in wb.sheetnames:
+                del wb["Sheet"]
+
+        if sheet_name not in wb.sheetnames:
+            ws = wb.create_sheet(sheet_name)
+            ws.append(headers)
+            # Style header row
+            for cell in ws[1]:
+                cell.fill = HDR_BG
+                cell.font = HDR_FONT
+                cell.alignment = Alignment(horizontal="center")
+        else:
+            ws = wb[sheet_name]
+
+        # Append data row
+        ws.append(row_data)
+        # Style last row
+        last_row = ws.max_row
+        fill = ALT_BG if last_row % 2 == 0 else ALT_BG2
+        for cell in ws[last_row]:
+            cell.fill = fill
+            cell.font = DEF_FONT
+            cell.border = BORDER
+            cell.alignment = Alignment(horizontal="center")
+
+        # Auto column width
+        for col in ws.columns:
+            max_len = max((len(str(c.value or "")) for c in col), default=8)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 30)
+
+        wb.save(fpath)
+        return True
+    except Exception as e:
+        print(f"[WARN] _xl_write failed ({fpath}): {e}")
+        return False
+
+def save_prices_locally(nifty, banknifty, sensex, vix=None):
+    """Live prices Excel mein append karo — har refresh pe"""
+    ensure_data_dir()
+    fpath = os.path.join(DATA_DIR, "prices", "live_prices.xlsx")
+    ts    = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+    _xl_write(fpath, "Live Prices",
+        ["Timestamp", "Nifty 50", "Bank Nifty", "Sensex", "India VIX"],
+        [ts,
+         round(nifty, 2)     if nifty     else "",
+         round(banknifty, 2) if banknifty else "",
+         round(sensex, 2)    if sensex    else "",
+         round(vix, 2)       if vix       else ""])
+
+def save_options_chain_locally(instrument_name, chain_rows):
+    """Options chain Excel mein save karo — aaj ki date ke file mein"""
+    ensure_data_dir()
+    if not chain_rows:
+        return
+    date_str = now_ist().strftime("%Y-%m-%d")
+    ts       = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+    fpath    = os.path.join(DATA_DIR, "options_chain", f"{instrument_name}_{date_str}.xlsx")
+    for row in chain_rows:
+        _xl_write(fpath, "Options Chain",
+            ["Timestamp", "Strike", "Expiry", "Call LTP", "Call OI", "Call IV", "Put LTP", "Put OI", "Put IV"],
+            [ts,
+             row.get("strike",""),   row.get("expiry",""),
+             row.get("call_ltp",""), row.get("call_oi",""), row.get("call_iv",""),
+             row.get("put_ltp",""),  row.get("put_oi",""),  row.get("put_iv","")])
+
+def save_oi_snapshot_locally(instrument_name, oi_data_rows):
+    """OI snapshot Excel mein append karo — timestamps ke saath"""
+    ensure_data_dir()
+    if not oi_data_rows:
+        return
+    date_str = now_ist().strftime("%Y-%m-%d")
+    ts       = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+    fpath    = os.path.join(DATA_DIR, "oi_snapshots", f"{instrument_name}_OI_{date_str}.xlsx")
+    for row in oi_data_rows:
+        _xl_write(fpath, "OI Snapshots",
+            ["Timestamp", "Strike", "Call OI", "Put OI", "Call LTP", "Put LTP", "Call OI Chg", "Put OI Chg"],
+            [ts,
+             row.get("Strike",""),
+             row.get("Call OI",""),     row.get("Put OI",""),
+             row.get("Call LTP",""),    row.get("Put LTP",""),
+             row.get("Call OI Change",""), row.get("Put OI Change","")])
+
+def save_fii_dii_locally(fii_dii_data):
+    """FII/DII data Excel mein append karo"""
+    ensure_data_dir()
+    fpath = os.path.join(DATA_DIR, "fii_dii", "fii_dii_history.xlsx")
+    ts    = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+    for item in fii_dii_data:
+        if str(item.get("_source","")) == "unavailable":
+            continue
+        net_val = float(item.get("netValue", item.get("netvalue", 0)) or 0)
+        if net_val == 0:
+            continue
+        _xl_write(fpath, "FII DII History",
+            ["Timestamp", "Category", "Date", "Buy (Cr)", "Sell (Cr)", "Net (Cr)"],
+            [ts,
+             str(item.get("category","")).upper(),
+             item.get("date",""),
+             round(float(item.get("buyValue",  item.get("buyvalue",  0)) or 0), 2),
+             round(float(item.get("sellValue", item.get("sellvalue", 0)) or 0), 2),
+             round(net_val, 2)])
+
+def save_vix_locally(vix_val, vix_change=None):
+    """India VIX history Excel mein save karo"""
+    ensure_data_dir()
+    fpath = os.path.join(DATA_DIR, "vix", "vix_history.xlsx")
+    ts    = now_ist().strftime("%Y-%m-%d %H:%M:%S")
+    _xl_write(fpath, "VIX History",
+        ["Timestamp", "VIX", "Change %"],
+        [ts, round(float(vix_val), 2), round(float(vix_change or 0), 2)])
+
+def get_saved_data_summary():
+    """Saved data ka summary return karo"""
+    ensure_data_dir()
+    summary = {}
+    for folder in ["prices", "options_chain", "oi_snapshots", "fii_dii", "vix"]:
+        fdir  = os.path.join(DATA_DIR, folder)
+        files = [f for f in os.listdir(fdir) if f.endswith(".xlsx")] if os.path.exists(fdir) else []
+        total_rows = 0
+        total_size = 0
+        for fname in files:
+            fpath = os.path.join(fdir, fname)
+            total_size += os.path.getsize(fpath)
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(fpath, read_only=True)
+                for ws in wb.worksheets:
+                    total_rows += max(0, ws.max_row - 1)
+                wb.close()
+            except:
+                pass
+        summary[folder] = {"files": len(files), "rows": total_rows, "size_kb": round(total_size/1024, 1)}
+    return summary
+
+
 
 def cleanup_old_history():
     """2 weeks se purana data delete karo — month end pe automatically"""
@@ -609,6 +772,8 @@ for key, val in [
     ("cache_timestamp",  ""),
     ("oi_wall_ticker",   []),   # [{name, resistance, res_oi, support, sup_oi, updated}]
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
+    # ── OI Timeline Snapshots — har timeframe ke liye ──
+    ("oi_snapshots",     {}),   # {instrument_key: {timestamp: {strike: {call_oi, put_oi}}}}
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -1218,6 +1383,25 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
         except Exception as e:
             print(f"[WARN] OI cache save failed: {e}")
 
+    # ── OI Timeline Snapshots — multiple timeframes ke liye ──────
+    # Har refresh pe current OI timestamp ke saath save karo
+    if curr_oi:
+        instr_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX")
+        snap_key = f"oi_snap_{instr_name}"
+        now_ts_snap = int(time.time())
+        if "oi_snapshots" not in st.session_state:
+            st.session_state["oi_snapshots"] = {}
+        if snap_key not in st.session_state["oi_snapshots"]:
+            st.session_state["oi_snapshots"][snap_key] = {}
+        # Save snapshot with timestamp
+        st.session_state["oi_snapshots"][snap_key][now_ts_snap] = dict(curr_oi)
+        # Cleanup: sirf last 5 hours ke snapshots rakho (memory)
+        cutoff = now_ts_snap - (5 * 3600)
+        st.session_state["oi_snapshots"][snap_key] = {
+            ts: snap for ts, snap in st.session_state["oi_snapshots"][snap_key].items()
+            if ts >= cutoff
+        }
+
     # ── Daily OI History save karo — 3:15 PM ke baad ─────────
     _now_ist = now_ist()
     if curr_oi and _now_ist.hour >= 15 and _now_ist.minute >= 15:
@@ -1734,6 +1918,35 @@ with st.sidebar:
     st.markdown("1. @BotFather se bot banao")
     st.markdown("2. @userinfobot se Chat ID lo")
     st.markdown("3. Upar fill karo aur Save karo")
+
+    # ── 💾 Local Data Summary ──────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 💾 Local Saved Data")
+    try:
+        summary = get_saved_data_summary()
+        folder_icons = {
+            "prices":        ("⚡", "Live Prices"),
+            "options_chain": ("📋", "Options Chain"),
+            "oi_snapshots":  ("📊", "OI Snapshots"),
+            "fii_dii":       ("🏦", "FII / DII"),
+            "vix":           ("😨", "India VIX"),
+        }
+        for folder, (icon, label) in folder_icons.items():
+            info = summary.get(folder, {})
+            rows = info.get("rows", 0)
+            size = info.get("size_kb", 0)
+            col_r = "#00e676" if rows > 0 else "#6495b8"
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1d4ed820;font-size:12px">'
+                f'<span style="color:#90b8d8">{icon} {label}</span>'
+                f'<span style="color:{col_r};font-weight:600">{rows:,} rows &nbsp; <span style="color:#4e7a96;font-weight:400">{size} KB</span></span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        data_path = DATA_DIR
+        st.markdown(f'<div style="font-size:10px;color:#4e7a96;margin-top:8px;word-break:break-all">📁 {data_path}</div>', unsafe_allow_html=True)
+    except Exception as _se:
+        st.markdown('<div style="font-size:11px;color:#6495b8">Data saving shuru hogi jab market data aayega</div>', unsafe_allow_html=True)
 st.markdown("---")
 
 # ══════════════════════════════════════════════════════════════
@@ -1778,6 +1991,12 @@ if not ltp_data and not quote_data:
 nifty_price     = extract_ltp(ltp_data, "NSE_INDEX|Nifty 50")
 banknifty_price = extract_ltp(ltp_data, "NSE_INDEX|Nifty Bank")
 sensex_price    = extract_ltp(ltp_data, "BSE_INDEX|SENSEX")
+
+# 💾 Live prices locally save karo
+if nifty_price or banknifty_price:
+    _vix_val = st.session_state.get("cache_vix")
+    _vix_num = _vix_val.get("last") if isinstance(_vix_val, dict) else None
+    save_prices_locally(nifty_price, banknifty_price, sensex_price, _vix_num)
 
 # Aaj ka OHLC — dedicated endpoint se
 nifty_open,  nifty_high,  nifty_low,  nifty_close  = extract_ohlc(ohlc_data, "NSE_INDEX|Nifty 50")
@@ -1921,6 +2140,8 @@ with col4:
     if vix_data and vix_data.get("last"):
         vix_val   = vix_data["last"]
         vix_chg   = vix_data.get("pchange", 0) or 0
+        # 💾 VIX locally save karo
+        save_vix_locally(vix_val, vix_chg)
         vix_col   = "#ff5252" if vix_val > 20 else ("#ffd600" if vix_val > 15 else "#00e676")
         vix_mood  = "😱 HIGH FEAR" if vix_val > 20 else ("⚠️ CAUTION" if vix_val > 15 else "😊 LOW FEAR")
         vix_arrow = "▲" if vix_chg >= 0 else "▼"
@@ -2030,6 +2251,28 @@ for tab, instrument, name, spot in [
         result = calculate_analysis(chain_data, spot, expiry)
         if not result:
             continue
+
+        # 💾 OI Snapshot aur Options Chain locally save karo
+        try:
+            _df_save = result.get("df")
+            if _df_save is not None and not _df_save.empty:
+                save_oi_snapshot_locally(name.replace(" ","_"), _df_save.to_dict("records"))
+            if chain_data:
+                _chain_rows = []
+                for _row in chain_data:
+                    _chain_rows.append({
+                        "strike":    _row.get("strike_price",""),
+                        "call_ltp":  _row.get("CE",{}).get("lastPrice",""),
+                        "call_oi":   _row.get("CE",{}).get("openInterest",""),
+                        "call_iv":   _row.get("CE",{}).get("impliedVolatility",""),
+                        "put_ltp":   _row.get("PE",{}).get("lastPrice",""),
+                        "put_oi":    _row.get("PE",{}).get("openInterest",""),
+                        "put_iv":    _row.get("PE",{}).get("impliedVolatility",""),
+                        "expiry":    expiry,
+                    })
+                save_options_chain_locally(name.replace(" ","_"), _chain_rows)
+        except Exception as _e:
+            print(f"[WARN] Local save failed: {_e}")
 
         # ── OI Wall Ticker update — har 3 min ────────────────
         now_ts = time.time()
@@ -2461,90 +2704,51 @@ for tab, instrument, name, spot in [
                       <span style="color:#6495b8;font-size:11px">{active_label}</span>
                     </div>""", unsafe_allow_html=True)
 
-                # ── Chart toggle: OI vs OI Change ─────────────
-                chart_mode = st.radio(
-                    "📊 Chart Mode:",
-                    ["OI (Total)", "OI Change (Increase/Decrease)"],
-                    horizontal=True,
-                    key=f"chart_mode_{name}"
-                )
+
+                # df_d columns
+                df_d = df_d.copy()
+                df_d["TF Call OI Change"] = df_d["Call OI Change"]
+                df_d["TF Put OI Change"]  = df_d["Put OI Change"]
+
+                # ── Top OI strikes highlight karo ─────────────
+                top3_call = df_d.nlargest(3, "Call OI")["Strike"].tolist()
+                top3_put  = df_d.nlargest(3, "Put OI")["Strike"].tolist()
+
+                # Bar colors — top strikes bright, baaki dim
+                call_colors = ["#ff2222" if s in top3_call else "#ff525260" for s in df_d["Strike"]]
+                put_colors  = ["#00ff88" if s in top3_put  else "#00e67660" for s in df_d["Strike"]]
 
                 # OI Chart
                 fig_oi = go.Figure()
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"], y=df_d["Call OI"],
+                    name="Call OI (Resistance)",
+                    marker=dict(color=call_colors),
+                    hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
+                ))
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"], y=df_d["Put OI"],
+                    name="Put OI (Support)",
+                    marker=dict(color=put_colors),
+                    hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
+                ))
+                chart_title = f"<b>{name} OI — Big Players Position</b>"
+                y_title = "Open Interest"
 
-                if chart_mode == "OI (Total)":
-                    # ── Original OI bars ──────────────────────
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Call OI"],
-                        name="Call OI (Resistance)",
-                        marker_color="#ff5252", marker_opacity=0.85
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Put OI"],
-                        name="Put OI (Support)",
-                        marker_color="#00e676", marker_opacity=0.85
-                    ))
-                    chart_title = f"<b>{name} OI — Big Players Position</b>"
-                    y_title = "Open Interest"
-
-                else:
-                    # ── OI Change — Increase/Decrease alag alag ──
-                    # Call OI Increase (positive change) — solid red
-                    call_inc = df_d["Call OI Change"].clip(lower=0)
-                    # Call OI Decrease (negative change) — hatched/light red
-                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
-                    # Put OI Increase (positive change) — solid green
-                    put_inc  = df_d["Put OI Change"].clip(lower=0)
-                    # Put OI Decrease (negative change) — hatched/light green
-                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
-
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_inc,
-                        name="Call OI Increase ▲",
-                        marker=dict(color="#ff5252", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Call Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_dec,
-                        name="Call OI Decrease ▼",
-                        marker=dict(color="#ff5252", opacity=0.3,
-                                    pattern=dict(shape="/", fgcolor="#ff5252", bgcolor="rgba(255,82,82,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Call Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_inc,
-                        name="Put OI Increase ▲",
-                        marker=dict(color="#00e676", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Put Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_dec,
-                        name="Put OI Decrease ▼",
-                        marker=dict(color="#00e676", opacity=0.3,
-                                    pattern=dict(shape="\\", fgcolor="#00e676", bgcolor="rgba(0,230,118,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-
-                    # Net OI change summary
-                    net_call = int(df_d["Call OI Change"].sum())
-                    net_put  = int(df_d["Put OI Change"].sum())
-                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
-                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
-                    st.markdown(f"""
-                    <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
-                      <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
-                      </div>
-                      <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
-                    y_title = "OI Change"
+                # Top OI badges
+                top_c_str = " | ".join([f"{int(s):,}" for s in top3_call])
+                top_p_str = " | ".join([f"{int(s):,}" for s in top3_put])
+                st.markdown(f"""
+                <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+                  <div style="background:#ff222215;border:1px solid #ff222240;border-radius:8px;padding:7px 14px;font-size:12px">
+                    🔴 <b style="color:#ff2222">Top Call OI (Resistance):</b>
+                    <span style="color:#ff8888;font-family:'JetBrains Mono',monospace;font-weight:700"> {top_c_str}</span>
+                  </div>
+                  <div style="background:#00ff8815;border:1px solid #00ff8840;border-radius:8px;padding:7px 14px;font-size:12px">
+                    🟢 <b style="color:#00ff88">Top Put OI (Support):</b>
+                    <span style="color:#00e676;font-family:'JetBrains Mono',monospace;font-weight:700"> {top_p_str}</span>
+                  </div>
+                </div>""", unsafe_allow_html=True)
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
                                  annotation_text=f"ATM {atm}", annotation_font_color="#ffd600")
@@ -2572,15 +2776,6 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
-
-                # Legend explanation
-                if chart_mode == "OI Change (Increase/Decrease)":
-                    st.markdown("""<div style="display:flex;gap:16px;margin-top:4px;font-size:11px;flex-wrap:wrap">
-                      <span>🔴 <b>Solid Red</b> = Call OI Badha (Bears position add kar rahe)</span>
-                      <span>🔴 <b>Light Red</b> = Call OI Ghata (Bears exit kar rahe)</span>
-                      <span>🟢 <b>Solid Green</b> = Put OI Badha (Bulls position add kar rahe)</span>
-                      <span>🟢 <b>Light Green</b> = Put OI Ghata (Bulls exit kar rahe)</span>
-                    </div>""", unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
@@ -2815,6 +3010,10 @@ with col_fii2:
 
 with st.spinner("FII/DII data la raha hoon..."):
     fii_dii = safe_api_call(get_fii_dii_data, fallback=None)
+
+# 💾 FII/DII locally save karo
+if fii_dii:
+    save_fii_dii_locally(fii_dii)
 
 if fii_dii:
     try:
