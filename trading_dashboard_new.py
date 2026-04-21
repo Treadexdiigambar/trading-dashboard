@@ -50,7 +50,7 @@ def cleanup_old_history():
                                 rows_kept.append(row)
                             else:
                                 cleaned += 1
-                        except Exception:
+                        except:
                             rows_kept.append(row)
                 # Write back
                 with open(fpath, "w", newline="") as f:
@@ -1147,7 +1147,7 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
                 for k, v in raw.get("data", {}).items():
                     try:
                         prev_oi[int(float(k))] = v
-                    except (ValueError, TypeError):
+                    except:
                         prev_oi[k] = v
                 print(f"[INFO] OI cache loaded: {len(prev_oi)} strikes")
             else:
@@ -2461,43 +2461,90 @@ for tab, instrument, name, spot in [
                       <span style="color:#6495b8;font-size:11px">{active_label}</span>
                     </div>""", unsafe_allow_html=True)
 
-
-                # ── Top 3 OI strikes highlight ─────────────────
-                top3_call = df_d.nlargest(3, "Call OI")["Strike"].tolist()
-                top3_put  = df_d.nlargest(3, "Put OI")["Strike"].tolist()
-                call_colors = ["rgba(255,34,34,1.0)"  if s in top3_call else "rgba(255,82,82,0.35)"  for s in df_d["Strike"].tolist()]
-                put_colors  = ["rgba(0,255,136,1.0)"  if s in top3_put  else "rgba(0,230,118,0.35)"  for s in df_d["Strike"].tolist()]
-
-                top_c_str = " | ".join([f"{int(s):,}" for s in top3_call])
-                top_p_str = " | ".join([f"{int(s):,}" for s in top3_put])
-                st.markdown(f"""
-                <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap">
-                  <div style="background:rgba(255,34,34,0.1);border:1px solid rgba(255,34,34,0.4);border-radius:8px;padding:7px 14px;font-size:12px">
-                    🔴 <b style="color:#ff2222">Top Call OI (Resistance):</b>
-                    <span style="color:#ff8888;font-family:'JetBrains Mono',monospace;font-weight:700"> {top_c_str}</span>
-                  </div>
-                  <div style="background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.4);border-radius:8px;padding:7px 14px;font-size:12px">
-                    🟢 <b style="color:#00ff88">Top Put OI (Support):</b>
-                    <span style="color:#00e676;font-family:'JetBrains Mono',monospace;font-weight:700"> {top_p_str}</span>
-                  </div>
-                </div>""", unsafe_allow_html=True)
+                # ── Chart toggle: OI vs OI Change ─────────────
+                chart_mode = st.radio(
+                    "📊 Chart Mode:",
+                    ["OI (Total)", "OI Change (Increase/Decrease)"],
+                    horizontal=True,
+                    key=f"chart_mode_{name}"
+                )
 
                 # OI Chart
                 fig_oi = go.Figure()
-                fig_oi.add_trace(go.Bar(
-                    x=df_d["Strike"].tolist(), y=df_d["Call OI"].tolist(),
-                    name="Call OI (Resistance)",
-                    marker_color=call_colors,
-                    hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
-                ))
-                fig_oi.add_trace(go.Bar(
-                    x=df_d["Strike"].tolist(), y=df_d["Put OI"].tolist(),
-                    name="Put OI (Support)",
-                    marker_color=put_colors,
-                    hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
-                ))
-                chart_title = f"<b>{name} OI — Big Players Position</b>"
-                y_title     = "Open Interest"
+
+                if chart_mode == "OI (Total)":
+                    # ── Original OI bars ──────────────────────
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=df_d["Call OI"],
+                        name="Call OI (Resistance)",
+                        marker_color="#ff5252", marker_opacity=0.85
+                    ))
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=df_d["Put OI"],
+                        name="Put OI (Support)",
+                        marker_color="#00e676", marker_opacity=0.85
+                    ))
+                    chart_title = f"<b>{name} OI — Big Players Position</b>"
+                    y_title = "Open Interest"
+
+                else:
+                    # ── OI Change — Increase/Decrease alag alag ──
+                    # Call OI Increase (positive change) — solid red
+                    call_inc = df_d["Call OI Change"].clip(lower=0)
+                    # Call OI Decrease (negative change) — hatched/light red
+                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
+                    # Put OI Increase (positive change) — solid green
+                    put_inc  = df_d["Put OI Change"].clip(lower=0)
+                    # Put OI Decrease (negative change) — hatched/light green
+                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
+
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=call_inc,
+                        name="Call OI Increase ▲",
+                        marker=dict(color="#ff5252", opacity=0.9),
+                        hovertemplate="Strike: %{x}<br>Call Increase: +%{y:,.0f}<extra></extra>"
+                    ))
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=call_dec,
+                        name="Call OI Decrease ▼",
+                        marker=dict(color="#ff5252", opacity=0.3,
+                                    pattern=dict(shape="/", fgcolor="#ff5252", bgcolor="rgba(255,82,82,0.1)")),
+                        hovertemplate="Strike: %{x}<br>Call Decrease: -%{y:,.0f}<extra></extra>"
+                    ))
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=put_inc,
+                        name="Put OI Increase ▲",
+                        marker=dict(color="#00e676", opacity=0.9),
+                        hovertemplate="Strike: %{x}<br>Put Increase: +%{y:,.0f}<extra></extra>"
+                    ))
+                    fig_oi.add_trace(go.Bar(
+                        x=df_d["Strike"], y=put_dec,
+                        name="Put OI Decrease ▼",
+                        marker=dict(color="#00e676", opacity=0.3,
+                                    pattern=dict(shape="\\", fgcolor="#00e676", bgcolor="rgba(0,230,118,0.1)")),
+                        hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
+                    ))
+
+                    # Net OI change summary
+                    net_call = int(df_d["Call OI Change"].sum())
+                    net_put  = int(df_d["Put OI Change"].sum())
+                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
+                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
+                    st.markdown(f"""
+                    <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
+                      <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
+                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
+                      </div>
+                      <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
+                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
+                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
+                    y_title = "OI Change"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
                                  annotation_text=f"ATM {atm}", annotation_font_color="#ffd600")
@@ -2525,6 +2572,15 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
+
+                # Legend explanation
+                if chart_mode == "OI Change (Increase/Decrease)":
+                    st.markdown("""<div style="display:flex;gap:16px;margin-top:4px;font-size:11px;flex-wrap:wrap">
+                      <span>🔴 <b>Solid Red</b> = Call OI Badha (Bears position add kar rahe)</span>
+                      <span>🔴 <b>Light Red</b> = Call OI Ghata (Bears exit kar rahe)</span>
+                      <span>🟢 <b>Solid Green</b> = Put OI Badha (Bulls position add kar rahe)</span>
+                      <span>🟢 <b>Light Green</b> = Put OI Ghata (Bulls exit kar rahe)</span>
+                    </div>""", unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
@@ -2624,16 +2680,10 @@ for tab, instrument, name, spot in [
                         elif "Unwind"  in val:  return "color:#ff5252"
                     return ""
 
-                # ── Dark HTML table — no white background ──────
-                col_names = list(oi_table.columns)
-                hdr_html  = "".join(
-                    f'<th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;'
-                    f'text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;'
-                    f'border-bottom:1px solid rgba(29,78,216,0.3);background:rgba(29,78,216,0.15)">{c}</th>'
-                    for c in col_names
-                )
+                # ── OI Buildup Scanner — Dark HTML table ───────
+                buildup_rows = ""
+                buildup_signals = {"long_buildup":[],"short_buildup":[],"long_unwind":[],"short_cover":[]}
 
-                rows_html = ""
                 for idx, trow in oi_table.iterrows():
                     raw_r    = oi_raw.loc[idx]
                     is_atm_r = raw_r["Strike"] == atm
@@ -2642,47 +2692,120 @@ for tab, instrument, name, spot in [
                     row_bg   = "background:rgba(255,214,0,0.06);" if is_atm_r else (
                                "background:rgba(6,14,26,0.95);" if idx % 2 == 0 else "background:rgba(10,21,37,0.95);")
 
+                    # Track buildup signals
+                    sig_c = str(trow.get("Call Signal",""))
+                    sig_p = str(trow.get("Put Signal",""))
+                    s_val = int(raw_r["Strike"])
+                    if "Long Build" in sig_p:   buildup_signals["long_buildup"].append(s_val)
+                    if "Short Build" in sig_c:  buildup_signals["short_buildup"].append(s_val)
+                    if "Long Unwind" in sig_c:  buildup_signals["long_unwind"].append(s_val)
+                    if "Short Cover" in sig_p:  buildup_signals["short_cover"].append(s_val)
+
                     cells = ""
-                    for ci, col in enumerate(col_names):
+                    for ci, col in enumerate(oi_table.columns):
                         val = str(trow[col])
+                        if ci == 3 and is_max_c:   color="#fff"; bg="background:#cc0000;"
+                        elif ci == 5 and is_max_p: color="#fff"; bg="background:#00aa44;"
+                        elif val.startswith("+") and val not in ("+0"): color="#00e676"; bg=""
+                        elif val.startswith("-"):  color="#ff5252"; bg=""
+                        elif "Writers" in val:     color="#a78bfa"; bg=""
+                        elif "Buyers"  in val:     color="#ff8c00"; bg=""
+                        elif "Long Build" in val:  color="#00ff88"; bg=""
+                        elif "Short Build" in val: color="#ff4444"; bg=""
+                        elif "Short Cover" in val: color="#ffd600"; bg=""
+                        elif "Long Unwind" in val: color="#ff8c00"; bg=""
+                        elif "Exit" in val or "Unwind" in val: color="#6495b8"; bg=""
+                        elif val == "—":           color="#3a5068"; bg=""
+                        else:                      color="#c8dff5"; bg=""
+                        fw = "font-weight:700;" if (val.startswith(("+","-")) or is_max_c or is_max_p) else ""
+                        cells += f'<td style="padding:6px 9px;color:{color};{bg}{fw}font-size:11px;border-bottom:1px solid rgba(29,78,216,0.08);white-space:nowrap">{val}</td>'
+                    buildup_rows += f'<tr style="{row_bg}">{cells}</tr>'
 
-                        # Special cell backgrounds for max OI
-                        if ci == 3 and is_max_c:   # Call OI column
-                            cell_bg = "background:#cc0000;"; color = "#ffffff"; fw = "font-weight:900;"
-                        elif ci == 5 and is_max_p:  # Put OI column
-                            cell_bg = "background:#00aa44;"; color = "#ffffff"; fw = "font-weight:900;"
-                        else:
-                            cell_bg = ""
-                            fw      = ""
-                            if val.startswith("+") and val not in ("+0", "+0"): color = "#00e676"; fw = "font-weight:700;"
-                            elif val.startswith("-"):                            color = "#ff5252"; fw = "font-weight:700;"
-                            elif "Writers" in val:                               color = "#a78bfa"; fw = "font-weight:600;"
-                            elif "Buyers"  in val:                               color = "#ff8c00"; fw = "font-weight:600;"
-                            elif "Exit"    in val or "Unwind" in val:            color = "#6495b8"
-                            elif val == "—":                                     color = "#3a5068"
-                            else:                                                color = "#c8dff5"
-
-                        cells += (
-                            f'<td style="padding:7px 10px;color:{color};{cell_bg}{fw}'
-                            f'font-size:11px;font-family:\'JetBrains Mono\',monospace;'
-                            f'border-bottom:1px solid rgba(29,78,216,0.07);white-space:nowrap">{val}</td>'
-                        )
-                    rows_html += f'<tr style="{row_bg}">{cells}</tr>'
-
+                col_headers = "".join(
+                    f'<th style="padding:7px 9px;text-align:left;color:#4e7a96;font-size:10px;'
+                    f'text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid rgba(29,78,216,0.25);white-space:nowrap">{c}</th>'
+                    for c in oi_table.columns)
                 st.markdown(f"""
-                <div style="overflow-x:auto;border-radius:12px;border:1px solid rgba(29,78,216,0.2);margin-top:8px">
-                  <table style="width:100%;border-collapse:collapse;background:#060e1a">
-                    <thead><tr>{hdr_html}</tr></thead>
-                    <tbody>{rows_html}</tbody>
-                  </table>
-                </div>""", unsafe_allow_html=True)
-                st.markdown("""<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
-                  <span style="color:#ff6666">🔴 Max Call OI = Resistance</span>
+                <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2);margin-top:6px">
+                <table style="width:100%;border-collapse:collapse;background:#060e1a;font-family:'JetBrains Mono',monospace">
+                  <thead><tr style="background:rgba(29,78,216,0.15)">{col_headers}</tr></thead>
+                  <tbody>{buildup_rows}</tbody>
+                </table></div>""", unsafe_allow_html=True)
+
+                st.markdown("""<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;flex-wrap:wrap">
+                  <span style="color:#ff4444">🔴 Max Call OI = Resistance</span>
                   <span style="color:#00e676">🟢 Max Put OI = Support</span>
                   <span style="color:#ffd600">🟡 ATM Strike</span>
-                  <span style="color:#a78bfa">✍️ Writers = Position add kar rahe</span>
-                  <span style="color:#ff8c00">🛒 Buyers = Lete hain direction ke liye</span>
+                  <span style="color:#a78bfa">✍️ Writers = Position add</span>
+                  <span style="color:#ff8c00">🛒 Buyers = Direction bet</span>
+                  <span style="color:#00ff88">📈 Long Buildup</span>
+                  <span style="color:#ff4444">📉 Short Buildup</span>
                 </div>""", unsafe_allow_html=True)
+
+                # ══ OI BUILDUP SCANNER ══
+                st.markdown("---")
+                st.markdown('<div class="sec-header" style="border-left:3px solid #00ff88">🔍 OI Buildup Scanner</div>', unsafe_allow_html=True)
+
+                # Overall buildup signal
+                lb_cnt = len(buildup_signals["long_buildup"])
+                sb_cnt = len(buildup_signals["short_buildup"])
+                lw_cnt = len(buildup_signals["long_unwind"])
+                sc_cnt = len(buildup_signals["short_cover"])
+
+                if lb_cnt > sb_cnt and lb_cnt > 0:
+                    overall_sig  = "🟢 BULLISH — Long Buildup Dominant"
+                    overall_col  = "#00e676"
+                    overall_bg   = "#00e67615"
+                    overall_bdr  = "#00e676"
+                    overall_desc = f"Put writers active hain — {lb_cnt} strikes pe long buildup"
+                elif sb_cnt > lb_cnt and sb_cnt > 0:
+                    overall_sig  = "🔴 BEARISH — Short Buildup Dominant"
+                    overall_col  = "#ff5252"
+                    overall_bg   = "#ff525215"
+                    overall_bdr  = "#ff5252"
+                    overall_desc = f"Call writers active hain — {sb_cnt} strikes pe short buildup"
+                elif sc_cnt > 0:
+                    overall_sig  = "🟡 SHORT COVERING — Bears Exit Ho Rahe"
+                    overall_col  = "#ffd600"
+                    overall_bg   = "#ffd60015"
+                    overall_bdr  = "#ffd600"
+                    overall_desc = f"{sc_cnt} strikes pe short covering — possible bounce"
+                elif lw_cnt > 0:
+                    overall_sig  = "🟠 LONG UNWINDING — Bulls Exit Ho Rahe"
+                    overall_col  = "#ff8c00"
+                    overall_bg   = "#ff8c0015"
+                    overall_bdr  = "#ff8c00"
+                    overall_desc = f"{lw_cnt} strikes pe long unwinding — caution"
+                else:
+                    overall_sig  = "⚪ NO CLEAR SIGNAL — Pehla refresh karo"
+                    overall_col  = "#6495b8"
+                    overall_bg   = "#6495b815"
+                    overall_bdr  = "#6495b8"
+                    overall_desc = "OI change data aane ke baad signal milega"
+
+                st.markdown(f"""
+                <div style="background:{overall_bg};border:2px solid {overall_bdr};border-radius:12px;
+                     padding:14px 20px;margin-bottom:12px;text-align:center">
+                  <div style="font-size:20px;font-weight:900;color:{overall_col}">{overall_sig}</div>
+                  <div style="font-size:12px;color:#90b8d8;margin-top:4px">{overall_desc}</div>
+                </div>""", unsafe_allow_html=True)
+
+                # Buildup breakdown cards
+                bc1, bc2, bc3, bc4 = st.columns(4)
+                def bcard(col, label, strikes, color, bg):
+                    strike_str = ", ".join([f"{s:,}" for s in strikes[:3]]) if strikes else "—"
+                    col.markdown(f"""<div style="background:{bg};border:1px solid {color}40;border-radius:8px;
+                        padding:10px;text-align:center">
+                        <div style="font-size:10px;color:{color};font-weight:700;text-transform:uppercase;
+                            letter-spacing:1px;margin-bottom:4px">{label}</div>
+                        <div style="font-size:22px;font-weight:900;color:{color}">{len(strikes)}</div>
+                        <div style="font-size:10px;color:#6495b8;margin-top:3px">{strike_str}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                bcard(bc1, "Long Buildup",  buildup_signals["long_buildup"],  "#00e676", "#00e67610")
+                bcard(bc2, "Short Buildup", buildup_signals["short_buildup"], "#ff5252", "#ff525210")
+                bcard(bc3, "Long Unwind",   buildup_signals["long_unwind"],   "#ff8c00", "#ff8c0010")
+                bcard(bc4, "Short Cover",   buildup_signals["short_cover"],   "#ffd600", "#ffd60010")
 
                 # ── 7 DAYS OI HISTORY ─────────────────────────
                 st.markdown("---")
@@ -2796,6 +2919,244 @@ for tab, instrument, name, spot in [
                     </div>""", unsafe_allow_html=True)
                 else:
                     st.info("⏳ Day range data market hours mein aayega")
+
+                # ══ EXPIRY COUNTDOWN ══════════════════════════
+                st.markdown("---")
+                st.markdown('<div class="sec-header" style="border-left:3px solid #ffd600">⏳ Expiry Countdown + Straddle</div>', unsafe_allow_html=True)
+
+                try:
+                    from datetime import datetime as dt
+                    _now_e = now_ist()
+                    if expiry:
+                        try:
+                            exp_dt = dt.strptime(str(expiry), "%Y-%m-%d")
+                        except Exception:
+                            exp_dt = None
+
+                        if exp_dt:
+                            days_left    = (exp_dt.date() - _now_e.date()).days
+                            is_exp_today = days_left == 0
+                            exp_color    = "#ff5252" if days_left <= 1 else ("#ffd600" if days_left <= 3 else "#00e676")
+                            exp_label    = "🔴 EXPIRY TODAY!" if is_exp_today else f"{days_left} din bacha hai"
+
+                            # Straddle value (ATM call + put LTP)
+                            atm_row = df_d[df_d["Strike"] == atm]
+                            if not atm_row.empty:
+                                atm_call_ltp = float(atm_row.iloc[0].get("Call LTP", 0))
+                                atm_put_ltp  = float(atm_row.iloc[0].get("Put LTP",  0))
+                                straddle_val = atm_call_ltp + atm_put_ltp
+                                expected_move_up   = round(spot + straddle_val, 0) if spot else 0
+                                expected_move_down = round(spot - straddle_val, 0) if spot else 0
+
+                                # Theta per day (approx)
+                                theta_approx = round(straddle_val / max(days_left, 1), 1) if days_left > 0 else straddle_val
+
+                                ec1, ec2, ec3, ec4 = st.columns(4)
+                                ec1.markdown(f"""<div style="background:#1a1500;border:1px solid #ffd60040;border-radius:8px;padding:10px;text-align:center">
+                                    <div style="font-size:10px;color:#6495b8;margin-bottom:4px">EXPIRY</div>
+                                    <div style="font-size:14px;font-weight:700;color:#ffd600">{expiry}</div>
+                                    <div style="font-size:13px;color:{exp_color};font-weight:700;margin-top:2px">{exp_label}</div>
+                                </div>""", unsafe_allow_html=True)
+                                ec2.markdown(f"""<div style="background:#0d1929;border:1px solid #a78bfa40;border-radius:8px;padding:10px;text-align:center">
+                                    <div style="font-size:10px;color:#6495b8;margin-bottom:4px">ATM STRADDLE</div>
+                                    <div style="font-size:22px;font-weight:900;color:#a78bfa;font-family:'JetBrains Mono',monospace">₹{straddle_val:,.1f}</div>
+                                    <div style="font-size:10px;color:#6495b8">Call {atm_call_ltp:.0f} + Put {atm_put_ltp:.0f}</div>
+                                </div>""", unsafe_allow_html=True)
+                                ec3.markdown(f"""<div style="background:#0a2d15;border:1px solid #00e67640;border-radius:8px;padding:10px;text-align:center">
+                                    <div style="font-size:10px;color:#6495b8;margin-bottom:4px">EXPECTED RANGE</div>
+                                    <div style="font-size:13px;font-weight:700;color:#00e676">▲ {expected_move_up:,.0f}</div>
+                                    <div style="font-size:13px;font-weight:700;color:#ff5252">▼ {expected_move_down:,.0f}</div>
+                                </div>""", unsafe_allow_html=True)
+                                ec4.markdown(f"""<div style="background:#2d1010;border:1px solid #ff525240;border-radius:8px;padding:10px;text-align:center">
+                                    <div style="font-size:10px;color:#6495b8;margin-bottom:4px">DAILY THETA DECAY</div>
+                                    <div style="font-size:22px;font-weight:900;color:#ff5252;font-family:'JetBrains Mono',monospace">-₹{theta_approx}</div>
+                                    <div style="font-size:10px;color:#6495b8">per lot per day</div>
+                                </div>""", unsafe_allow_html=True)
+                except Exception as _ee:
+                    st.markdown(f'<div style="font-size:11px;color:#6495b8">Expiry data: {_ee}</div>', unsafe_allow_html=True)
+
+                # ══ SMART MONEY FLOW ══════════════════════════
+                st.markdown("---")
+                st.markdown('<div class="sec-header" style="border-left:3px solid #f59e0b">💰 Smart Money Flow — Big Players Kahan Hain?</div>', unsafe_allow_html=True)
+
+                try:
+                    # Top 5 strikes by OI (absolute) — institutional interest
+                    df_smf = df_d.copy()
+                    df_smf["Total OI"]  = df_smf["Call OI"] + df_smf["Put OI"]
+                    df_smf["Net OI Chg"]= df_smf["Call OI Change"] + df_smf["Put OI Change"]
+                    df_smf["OI Ratio"]  = (df_smf["Put OI"] / df_smf["Call OI"].replace(0,1)).round(2)
+                    top5_total = df_smf.nlargest(5, "Total OI")
+
+                    total_call_oi_all = int(df_smf["Call OI"].sum())
+                    total_put_oi_all  = int(df_smf["Put OI"].sum())
+                    pcr_live = round(total_put_oi_all / total_call_oi_all, 3) if total_call_oi_all > 0 else 0
+                    net_oi_chg_call = int(df_smf["Call OI Change"].sum())
+                    net_oi_chg_put  = int(df_smf["Put OI Change"].sum())
+
+                    pcr_col   = "#00e676" if pcr_live >= 1.0 else ("#ff5252" if pcr_live <= 0.8 else "#ffd600")
+                    pcr_label_smf = "Bullish" if pcr_live >= 1.0 else ("Bearish" if pcr_live <= 0.8 else "Neutral")
+
+                    sm1, sm2, sm3 = st.columns(3)
+                    sm1.markdown(f"""<div style="background:#0d1929;border:1px solid rgba(29,78,216,0.2);border-radius:8px;padding:10px;text-align:center">
+                        <div style="font-size:10px;color:#6495b8;margin-bottom:4px">LIVE PCR</div>
+                        <div style="font-size:26px;font-weight:900;color:{pcr_col};font-family:'JetBrains Mono',monospace">{pcr_live}</div>
+                        <div style="font-size:11px;color:{pcr_col}">{pcr_label_smf}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                    c_chg_col = "#ff5252" if net_oi_chg_call > 0 else "#00e676"
+                    p_chg_col = "#00e676" if net_oi_chg_put  > 0 else "#ff5252"
+                    sm2.markdown(f"""<div style="background:#0d1929;border:1px solid rgba(29,78,216,0.2);border-radius:8px;padding:10px;text-align:center">
+                        <div style="font-size:10px;color:#6495b8;margin-bottom:4px">NET CALL OI CHG</div>
+                        <div style="font-size:20px;font-weight:900;color:{c_chg_col};font-family:'JetBrains Mono',monospace">{"+" if net_oi_chg_call>=0 else ""}{net_oi_chg_call:,}</div>
+                        <div style="font-size:10px;color:#6495b8">{"Bears adding" if net_oi_chg_call>0 else "Bears covering"}</div>
+                    </div>""", unsafe_allow_html=True)
+                    sm3.markdown(f"""<div style="background:#0d1929;border:1px solid rgba(29,78,216,0.2);border-radius:8px;padding:10px;text-align:center">
+                        <div style="font-size:10px;color:#6495b8;margin-bottom:4px">NET PUT OI CHG</div>
+                        <div style="font-size:20px;font-weight:900;color:{p_chg_col};font-family:'JetBrains Mono',monospace">{"+" if net_oi_chg_put>=0 else ""}{net_oi_chg_put:,}</div>
+                        <div style="font-size:10px;color:#6495b8">{"Bulls adding" if net_oi_chg_put>0 else "Bulls covering"}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                    # Top 5 strikes table
+                    smf_rows = ""
+                    for _, sr in top5_total.iterrows():
+                        s      = int(sr["Strike"])
+                        c_oi   = int(sr["Call OI"])
+                        p_oi   = int(sr["Put OI"])
+                        t_oi   = int(sr["Total OI"])
+                        ratio  = float(sr["OI Ratio"])
+                        bias   = "🟢 Bullish" if ratio > 1.2 else ("🔴 Bearish" if ratio < 0.8 else "🟡 Neutral")
+                        b_col  = "#00e676" if ratio > 1.2 else ("#ff5252" if ratio < 0.8 else "#ffd600")
+                        def fmts(v):
+                            if v >= 10000000: return f"{v/10000000:.1f}Cr"
+                            elif v >= 100000: return f"{v/100000:.1f}L"
+                            elif v >= 1000:   return f"{v/1000:.0f}K"
+                            return str(v)
+                        smf_rows += f"""<tr style="border-bottom:1px solid rgba(29,78,216,0.1)">
+                          <td style="padding:7px 10px;color:#60a5fa;font-weight:700;font-size:12px">{s:,}</td>
+                          <td style="padding:7px 10px;color:#ff8888;font-size:11px">{fmts(c_oi)}</td>
+                          <td style="padding:7px 10px;color:#88ff88;font-size:11px">{fmts(p_oi)}</td>
+                          <td style="padding:7px 10px;color:#90b8d8;font-size:11px">{fmts(t_oi)}</td>
+                          <td style="padding:7px 10px;color:#a78bfa;font-size:11px">{ratio}</td>
+                          <td style="padding:7px 10px;color:{b_col};font-weight:700;font-size:11px">{bias}</td>
+                        </tr>"""
+
+                    st.markdown(f"""
+                    <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(245,158,11,0.2);margin-top:10px">
+                    <table style="width:100%;border-collapse:collapse;background:#060e1a;font-family:'JetBrains Mono',monospace">
+                      <thead><tr style="background:rgba(245,158,11,0.1);border-bottom:1px solid rgba(245,158,11,0.3)">
+                        <th style="padding:7px 10px;color:#f59e0b;font-size:10px;text-align:left">Strike</th>
+                        <th style="padding:7px 10px;color:#ff8888;font-size:10px;text-align:left">Call OI</th>
+                        <th style="padding:7px 10px;color:#88ff88;font-size:10px;text-align:left">Put OI</th>
+                        <th style="padding:7px 10px;color:#90b8d8;font-size:10px;text-align:left">Total OI</th>
+                        <th style="padding:7px 10px;color:#a78bfa;font-size:10px;text-align:left">P/C Ratio</th>
+                        <th style="padding:7px 10px;color:#90b8d8;font-size:10px;text-align:left">Bias</th>
+                      </tr></thead>
+                      <tbody>{smf_rows}</tbody>
+                    </table></div>
+                    <div style="font-size:11px;color:#6495b8;margin-top:6px">
+                      💡 P/C Ratio &gt; 1.2 = Bullish bias | &lt; 0.8 = Bearish bias | Top 5 highest OI strikes dikhaye
+                    </div>""", unsafe_allow_html=True)
+                except Exception as _smf_e:
+                    st.markdown(f'<div style="font-size:11px;color:#6495b8">Smart Money data: {_smf_e}</div>', unsafe_allow_html=True)
+
+                # ══ PRICE ACTION + OI COMBO ═══════════════════
+                st.markdown("---")
+                st.markdown('<div class="sec-header" style="border-left:3px solid #00bfff">📈 Price Action + OI Combo Signal</div>', unsafe_allow_html=True)
+
+                try:
+                    instr_key_pa = "NSE_INDEX|Nifty 50" if name == "NIFTY" else ("NSE_INDEX|Nifty Bank" if name == "BANK NIFTY" else "BSE_INDEX|SENSEX")
+                    pa_high, pa_low, pa_open, _ = extract_day_range(quote_data, instr_key_pa)
+
+                    if pa_open and spot:
+                        price_move  = spot - pa_open
+                        price_dir   = "UP" if price_move > 0 else "DOWN"
+                        call_chg_pa = int(df_d["Call OI Change"].sum())
+                        put_chg_pa  = int(df_d["Put OI Change"].sum())
+
+                        # Combo signal logic
+                        if price_dir == "UP" and call_chg_pa > 0 and put_chg_pa < 0:
+                            pa_signal = "🔴 SHORT BUILD UP — Bears strong resistance bana rahe"
+                            pa_col    = "#ff5252"; pa_bg = "#ff525215"
+                            pa_desc   = "Price upar gaya + Call OI badha + Put OI ghata = Call writers dominant"
+                        elif price_dir == "UP" and put_chg_pa > 0:
+                            pa_signal = "🟢 LONG BUILD UP — Bulls strong support bana rahe"
+                            pa_col    = "#00e676"; pa_bg = "#00e67615"
+                            pa_desc   = "Price upar gaya + Put OI badha = Put writers bullish support add kar rahe"
+                        elif price_dir == "DOWN" and put_chg_pa > 0 and call_chg_pa < 0:
+                            pa_signal = "🟢 LONG BUILD UP — Bulls strong support"
+                            pa_col    = "#00e676"; pa_bg = "#00e67615"
+                            pa_desc   = "Price neeche gaya + Put OI badha = Strong support building"
+                        elif price_dir == "DOWN" and call_chg_pa > 0:
+                            pa_signal = "🔴 SHORT BUILD — Bears add kar rahe"
+                            pa_col    = "#ff5252"; pa_bg = "#ff525215"
+                            pa_desc   = "Price neeche gaya + Call OI badha = Resistance strong ho raha hai"
+                        elif call_chg_pa < 0 and price_dir == "DOWN":
+                            pa_signal = "🟡 SHORT COVERING — Bears exit ho rahe"
+                            pa_col    = "#ffd600"; pa_bg = "#ffd60015"
+                            pa_desc   = "Call OI ghata + price neeche = Bears exit, possible bounce"
+                        elif put_chg_pa < 0 and price_dir == "UP":
+                            pa_signal = "🟠 LONG UNWINDING — Bulls exit ho rahe"
+                            pa_col    = "#ff8c00"; pa_bg = "#ff8c0015"
+                            pa_desc   = "Put OI ghata + price upar = Bulls exit, caution"
+                        else:
+                            pa_signal = "⚪ MIXED — Clear signal nahi"
+                            pa_col    = "#6495b8"; pa_bg = "#6495b815"
+                            pa_desc   = "Price action aur OI change align nahi — wait karo"
+
+                        st.markdown(f"""
+                        <div style="background:{pa_bg};border:2px solid {pa_col};border-radius:12px;padding:14px 18px;margin-bottom:10px">
+                          <div style="font-size:18px;font-weight:900;color:{pa_col}">{pa_signal}</div>
+                          <div style="font-size:12px;color:#90b8d8;margin-top:5px">{pa_desc}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                        pa_c1, pa_c2, pa_c3, pa_c4 = st.columns(4)
+                        pa_pc = "#00e676" if price_move >= 0 else "#ff5252"
+                        pa_c1.markdown(f"""<div style="background:#0d1929;border:1px solid rgba(0,191,255,0.2);border-radius:8px;padding:10px;text-align:center">
+                            <div style="font-size:10px;color:#6495b8;margin-bottom:3px">PRICE MOVE</div>
+                            <div style="font-size:18px;font-weight:900;color:{pa_pc};font-family:'JetBrains Mono',monospace">{"+" if price_move>=0 else ""}{price_move:,.1f}</div>
+                            <div style="font-size:10px;color:#6495b8">from open {pa_open:,.0f}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                        cc_col_pa = "#ff5252" if call_chg_pa > 0 else "#00e676"
+                        pa_c2.markdown(f"""<div style="background:#0d1929;border:1px solid rgba(255,82,82,0.2);border-radius:8px;padding:10px;text-align:center">
+                            <div style="font-size:10px;color:#6495b8;margin-bottom:3px">CALL OI CHG</div>
+                            <div style="font-size:18px;font-weight:900;color:{cc_col_pa};font-family:'JetBrains Mono',monospace">{"+" if call_chg_pa>=0 else ""}{call_chg_pa:,}</div>
+                            <div style="font-size:10px;color:#6495b8">{"Bears adding" if call_chg_pa>0 else "Bears exit"}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                        pc_col_pa = "#00e676" if put_chg_pa > 0 else "#ff5252"
+                        pa_c3.markdown(f"""<div style="background:#0d1929;border:1px solid rgba(0,230,118,0.2);border-radius:8px;padding:10px;text-align:center">
+                            <div style="font-size:10px;color:#6495b8;margin-bottom:3px">PUT OI CHG</div>
+                            <div style="font-size:18px;font-weight:900;color:{pc_col_pa};font-family:'JetBrains Mono',monospace">{"+" if put_chg_pa>=0 else ""}{put_chg_pa:,}</div>
+                            <div style="font-size:10px;color:#6495b8">{"Bulls adding" if put_chg_pa>0 else "Bulls exit"}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                        combined_score = 0
+                        if price_dir=="UP" and put_chg_pa>0: combined_score += 2
+                        if price_dir=="UP" and call_chg_pa<0: combined_score += 1
+                        if price_dir=="DOWN" and call_chg_pa>0: combined_score -= 2
+                        if price_dir=="DOWN" and put_chg_pa<0: combined_score -= 1
+                        score_col   = "#00e676" if combined_score > 0 else ("#ff5252" if combined_score < 0 else "#ffd600")
+                        score_label = "Bullish" if combined_score > 0 else ("Bearish" if combined_score < 0 else "Neutral")
+                        pa_c4.markdown(f"""<div style="background:#0d1929;border:1px solid rgba(167,139,250,0.2);border-radius:8px;padding:10px;text-align:center">
+                            <div style="font-size:10px;color:#6495b8;margin-bottom:3px">COMBO SCORE</div>
+                            <div style="font-size:24px;font-weight:900;color:{score_col};font-family:'JetBrains Mono',monospace">{combined_score:+d}</div>
+                            <div style="font-size:11px;color:{score_col};font-weight:700">{score_label}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                        st.markdown("""<div style="background:#0f1e35;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:11px;color:#6495b8;line-height:1.8">
+                          <b style="color:#90b8d8">Signal Logic:</b>
+                          Price ▲ + Put OI ▲ = 🟢 Bulls strong &nbsp;|&nbsp;
+                          Price ▲ + Call OI ▲ = 🔴 Bears resistance &nbsp;|&nbsp;
+                          Price ▼ + Call OI ▲ = 🔴 Bears add &nbsp;|&nbsp;
+                          Price ▼ + Put OI ▲ = 🟢 Support build &nbsp;|&nbsp;
+                          Call OI ▼ = Bears exit &nbsp;|&nbsp;
+                          Put OI ▼ = Bulls exit
+                        </div>""", unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div style="font-size:12px;color:#6495b8;padding:10px">⏳ Market open hone ke baad price action data aayega</div>', unsafe_allow_html=True)
+                except Exception as _pa_e:
+                    st.markdown(f'<div style="font-size:11px;color:#6495b8">Price action error: {_pa_e}</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 st.markdown('<div class="sec-header" style="border-left:3px solid #60a5fa">🏦 FII / DII Activity</div>', unsafe_allow_html=True)
