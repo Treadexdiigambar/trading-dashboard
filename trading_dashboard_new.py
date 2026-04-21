@@ -50,7 +50,7 @@ def cleanup_old_history():
                                 rows_kept.append(row)
                             else:
                                 cleaned += 1
-                        except:
+                        except Exception:
                             rows_kept.append(row)
                 # Write back
                 with open(fpath, "w", newline="") as f:
@@ -142,136 +142,6 @@ def load_oi_history(instrument_name, days=7):
     except Exception as e:
         print(f"[WARN] OI history load failed: {e}")
         return []
-
-# ══════════════════════════════════════════════════════════════
-# ⏱️ INTRADAY OI SNAPSHOTS — Har 30 min pe save
-# ══════════════════════════════════════════════════════════════
-INTRADAY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "intraday_snapshots")
-
-def ensure_intraday_dir():
-    os.makedirs(INTRADAY_DIR, exist_ok=True)
-
-def save_intraday_snapshot(instrument_name, strike_data, spot, pcr, interval_mins=30):
-    """
-    Har interval_mins minutes pe ek snapshot save karo.
-    File: NIFTY_intraday_2026-04-21.csv
-    Columns: time, spot, pcr, total_call_oi, total_put_oi,
-             top_call_strike, top_call_oi, top_put_strike, top_put_oi,
-             + har strike ki call_oi aur put_oi
-    """
-    ensure_intraday_dir()
-    _now  = now_ist()
-
-    # Sirf market hours mein save karo (9:15 AM - 3:30 PM)
-    if _now.hour < 9 or (_now.hour == 9 and _now.minute < 15):
-        return
-    if _now.hour > 15 or (_now.hour == 15 and _now.minute > 30):
-        return
-
-    # Har interval_mins pe ek snapshot — minute ko round karo
-    slot_minute = (_now.minute // interval_mins) * interval_mins
-    time_slot   = _now.replace(minute=slot_minute, second=0, microsecond=0)
-    time_str    = time_slot.strftime("%H:%M")
-    date_str    = str(date.today())
-
-    safe_name   = instrument_name.replace(" ", "_").upper()
-    fname       = f"{safe_name}_intraday_{date_str}.csv"
-    fpath       = os.path.join(INTRADAY_DIR, fname)
-
-    # Already saved for this slot?
-    if os.path.exists(fpath):
-        try:
-            with open(fpath, "r") as f:
-                existing_times = [row["time"] for row in csv.DictReader(f)]
-            if time_str in existing_times:
-                return  # Already saved
-        except Exception:
-            pass
-
-    if not strike_data:
-        return
-
-    total_call_oi = sum(v["call_oi"] for v in strike_data.values())
-    total_put_oi  = sum(v["put_oi"]  for v in strike_data.values())
-    top_calls     = sorted(strike_data.items(), key=lambda x: x[1]["call_oi"], reverse=True)
-    top_puts      = sorted(strike_data.items(), key=lambda x: x[1]["put_oi"],  reverse=True)
-
-    row = {
-        "time":             time_str,
-        "spot":             round(spot, 2) if spot else 0,
-        "pcr":              round(pcr, 3)  if pcr  else 0,
-        "total_call_oi":    total_call_oi,
-        "total_put_oi":     total_put_oi,
-        "top_call_strike":  top_calls[0][0] if top_calls else 0,
-        "top_call_oi":      top_calls[0][1]["call_oi"] if top_calls else 0,
-        "top_put_strike":   top_puts[0][0]  if top_puts  else 0,
-        "top_put_oi":       top_puts[0][1]["put_oi"]   if top_puts  else 0,
-        "call_oi_change":   0,  # Will be calculated below
-        "put_oi_change":    0,
-    }
-
-    # OI change from previous snapshot
-    if os.path.exists(fpath):
-        try:
-            with open(fpath, "r") as f:
-                rows_existing = list(csv.DictReader(f))
-            if rows_existing:
-                prev = rows_existing[-1]
-                row["call_oi_change"] = total_call_oi - int(float(prev.get("total_call_oi", total_call_oi)))
-                row["put_oi_change"]  = total_put_oi  - int(float(prev.get("total_put_oi",  total_put_oi)))
-        except Exception:
-            pass
-
-    fieldnames = ["time","spot","pcr","total_call_oi","total_put_oi",
-                  "top_call_strike","top_call_oi","top_put_strike","top_put_oi",
-                  "call_oi_change","put_oi_change"]
-    file_exists = os.path.exists(fpath)
-    try:
-        with open(fpath, "a", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            if not file_exists:
-                writer.writeheader()
-            writer.writerow(row)
-        print(f"[INFO] Intraday snapshot saved: {fname} @ {time_str}")
-    except Exception as e:
-        print(f"[WARN] Intraday snapshot save failed: {e}")
-
-def load_intraday_snapshots(instrument_name, target_date=None):
-    """Aaj ka ya kisi din ka intraday snapshot load karo"""
-    ensure_intraday_dir()
-    if target_date is None:
-        target_date = str(date.today())
-    safe_name = instrument_name.replace(" ", "_").upper()
-    fname     = f"{safe_name}_intraday_{target_date}.csv"
-    fpath     = os.path.join(INTRADAY_DIR, fname)
-    if not os.path.exists(fpath):
-        return []
-    try:
-        with open(fpath, "r") as f:
-            return list(csv.DictReader(f))
-    except Exception as e:
-        print(f"[WARN] Intraday load failed: {e}")
-        return []
-
-def cleanup_intraday_snapshots(keep_days=7):
-    """7 din se purane intraday files delete karo"""
-    ensure_intraday_dir()
-    cutoff = date.today() - timedelta(days=keep_days)
-    try:
-        for fname in os.listdir(INTRADAY_DIR):
-            if not fname.endswith(".csv"):
-                continue
-            # Extract date from filename e.g. NIFTY_intraday_2026-04-14.csv
-            parts = fname.replace(".csv","").split("_")
-            try:
-                fdate = date.fromisoformat(parts[-1])
-                if fdate < cutoff:
-                    os.remove(os.path.join(INTRADAY_DIR, fname))
-                    print(f"[INFO] Deleted old intraday: {fname}")
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"[WARN] Intraday cleanup failed: {e}")
 
 # ── Load .env file if present (local development) ─────────────
 try:
@@ -1277,7 +1147,7 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
                 for k, v in raw.get("data", {}).items():
                     try:
                         prev_oi[int(float(k))] = v
-                    except:
+                    except (ValueError, TypeError):
                         prev_oi[k] = v
                 print(f"[INFO] OI cache loaded: {len(prev_oi)} strikes")
             else:
@@ -1350,25 +1220,10 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
 
     # ── Daily OI History save karo — 3:15 PM ke baad ─────────
     _now_ist = now_ist()
-    _instr_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX")
-
-    # ── Intraday Snapshot — har 30 min, market hours mein ─────
-    if curr_oi and _now_ist.hour >= 9:
-        try:
-            save_intraday_snapshot(
-                instrument_name = _instr_name,
-                strike_data     = curr_oi,
-                spot            = spot_price,
-                pcr             = total_put_oi / total_call_oi if total_call_oi > 0 else 0,
-                interval_mins   = 30
-            )
-        except Exception as e:
-            print(f"[WARN] Intraday snapshot failed: {e}")
-
     if curr_oi and _now_ist.hour >= 15 and _now_ist.minute >= 15:
         try:
             save_daily_oi(
-                instrument_name = _instr_name,
+                instrument_name = "NIFTY" if first_strike < 30000 else ("BANKNIFTY" if first_strike < 60000 else "SENSEX"),
                 strike_data     = curr_oi,
                 spot            = spot_price,
                 pcr             = total_put_oi / total_call_oi if total_call_oi > 0 else 0,
@@ -1377,13 +1232,12 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
         except Exception as e:
             print(f"[WARN] Daily OI save failed: {e}")
 
-        # ── Month end auto cleanup ─────────────────────────
+        # ── Month end auto cleanup — last day of month ─────
         _t = now_ist()
         last_day = calendar.monthrange(_t.year, _t.month)[1]
         if _t.day == last_day:
             print(f"[INFO] Month end detected — running auto cleanup...")
             cleanup_old_history()
-            cleanup_intraday_snapshots(keep_days=7)
     pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0
     df  = pd.DataFrame(oi_data).sort_values("Strike")
     pain_values = {ts: sum(max(0, s-ts)*v["call_oi"] + max(0, ts-s)*v["put_oi"]
@@ -2607,90 +2461,43 @@ for tab, instrument, name, spot in [
                       <span style="color:#6495b8;font-size:11px">{active_label}</span>
                     </div>""", unsafe_allow_html=True)
 
-                # ── Chart toggle: OI vs OI Change ─────────────
-                chart_mode = st.radio(
-                    "📊 Chart Mode:",
-                    ["OI (Total)", "OI Change (Increase/Decrease)"],
-                    horizontal=True,
-                    key=f"chart_mode_{name}"
-                )
+
+                # ── Top 3 OI strikes highlight ─────────────────
+                top3_call = df_d.nlargest(3, "Call OI")["Strike"].tolist()
+                top3_put  = df_d.nlargest(3, "Put OI")["Strike"].tolist()
+                call_colors = ["rgba(255,34,34,1.0)"  if s in top3_call else "rgba(255,82,82,0.35)"  for s in df_d["Strike"].tolist()]
+                put_colors  = ["rgba(0,255,136,1.0)"  if s in top3_put  else "rgba(0,230,118,0.35)"  for s in df_d["Strike"].tolist()]
+
+                top_c_str = " | ".join([f"{int(s):,}" for s in top3_call])
+                top_p_str = " | ".join([f"{int(s):,}" for s in top3_put])
+                st.markdown(f"""
+                <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+                  <div style="background:rgba(255,34,34,0.1);border:1px solid rgba(255,34,34,0.4);border-radius:8px;padding:7px 14px;font-size:12px">
+                    🔴 <b style="color:#ff2222">Top Call OI (Resistance):</b>
+                    <span style="color:#ff8888;font-family:'JetBrains Mono',monospace;font-weight:700"> {top_c_str}</span>
+                  </div>
+                  <div style="background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.4);border-radius:8px;padding:7px 14px;font-size:12px">
+                    🟢 <b style="color:#00ff88">Top Put OI (Support):</b>
+                    <span style="color:#00e676;font-family:'JetBrains Mono',monospace;font-weight:700"> {top_p_str}</span>
+                  </div>
+                </div>""", unsafe_allow_html=True)
 
                 # OI Chart
                 fig_oi = go.Figure()
-
-                if chart_mode == "OI (Total)":
-                    # ── Original OI bars ──────────────────────
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Call OI"],
-                        name="Call OI (Resistance)",
-                        marker_color="#ff5252", marker_opacity=0.85
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Put OI"],
-                        name="Put OI (Support)",
-                        marker_color="#00e676", marker_opacity=0.85
-                    ))
-                    chart_title = f"<b>{name} OI — Big Players Position</b>"
-                    y_title = "Open Interest"
-
-                else:
-                    # ── OI Change — Increase/Decrease alag alag ──
-                    # Call OI Increase (positive change) — solid red
-                    call_inc = df_d["Call OI Change"].clip(lower=0)
-                    # Call OI Decrease (negative change) — hatched/light red
-                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
-                    # Put OI Increase (positive change) — solid green
-                    put_inc  = df_d["Put OI Change"].clip(lower=0)
-                    # Put OI Decrease (negative change) — hatched/light green
-                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
-
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_inc,
-                        name="Call OI Increase ▲",
-                        marker=dict(color="#ff5252", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Call Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_dec,
-                        name="Call OI Decrease ▼",
-                        marker=dict(color="#ff5252", opacity=0.3,
-                                    pattern=dict(shape="/", fgcolor="#ff5252", bgcolor="rgba(255,82,82,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Call Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_inc,
-                        name="Put OI Increase ▲",
-                        marker=dict(color="#00e676", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Put Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_dec,
-                        name="Put OI Decrease ▼",
-                        marker=dict(color="#00e676", opacity=0.3,
-                                    pattern=dict(shape="\\", fgcolor="#00e676", bgcolor="rgba(0,230,118,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-
-                    # Net OI change summary
-                    net_call = int(df_d["Call OI Change"].sum())
-                    net_put  = int(df_d["Put OI Change"].sum())
-                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
-                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
-                    st.markdown(f"""
-                    <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
-                      <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
-                      </div>
-                      <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
-                    y_title = "OI Change"
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"].tolist(), y=df_d["Call OI"].tolist(),
+                    name="Call OI (Resistance)",
+                    marker_color=call_colors,
+                    hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
+                ))
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"].tolist(), y=df_d["Put OI"].tolist(),
+                    name="Put OI (Support)",
+                    marker_color=put_colors,
+                    hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
+                ))
+                chart_title = f"<b>{name} OI — Big Players Position</b>"
+                y_title     = "Open Interest"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
                                  annotation_text=f"ATM {atm}", annotation_font_color="#ffd600")
@@ -2718,15 +2525,6 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
-
-                # Legend explanation
-                if chart_mode == "OI Change (Increase/Decrease)":
-                    st.markdown("""<div style="display:flex;gap:16px;margin-top:4px;font-size:11px;flex-wrap:wrap">
-                      <span>🔴 <b>Solid Red</b> = Call OI Badha (Bears position add kar rahe)</span>
-                      <span>🔴 <b>Light Red</b> = Call OI Ghata (Bears exit kar rahe)</span>
-                      <span>🟢 <b>Solid Green</b> = Put OI Badha (Bulls position add kar rahe)</span>
-                      <span>🟢 <b>Light Green</b> = Put OI Ghata (Bulls exit kar rahe)</span>
-                    </div>""", unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
@@ -2826,8 +2624,58 @@ for tab, instrument, name, spot in [
                         elif "Unwind"  in val:  return "color:#ff5252"
                     return ""
 
-                st.dataframe(oi_table.style.apply(style_oi_row, axis=1)
-                             .map(color_chg, subset=["Call OI Chg","Put OI Chg","📊 Call Who","📊 Put Who"]), use_container_width=True, hide_index=True)
+                # ── Dark HTML table — no white background ──────
+                col_names = list(oi_table.columns)
+                hdr_html  = "".join(
+                    f'<th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;'
+                    f'text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;'
+                    f'border-bottom:1px solid rgba(29,78,216,0.3);background:rgba(29,78,216,0.15)">{c}</th>'
+                    for c in col_names
+                )
+
+                rows_html = ""
+                for idx, trow in oi_table.iterrows():
+                    raw_r    = oi_raw.loc[idx]
+                    is_atm_r = raw_r["Strike"] == atm
+                    is_max_c = raw_r["Call OI"] == max_call_oi
+                    is_max_p = raw_r["Put OI"]  == max_put_oi
+                    row_bg   = "background:rgba(255,214,0,0.06);" if is_atm_r else (
+                               "background:rgba(6,14,26,0.95);" if idx % 2 == 0 else "background:rgba(10,21,37,0.95);")
+
+                    cells = ""
+                    for ci, col in enumerate(col_names):
+                        val = str(trow[col])
+
+                        # Special cell backgrounds for max OI
+                        if ci == 3 and is_max_c:   # Call OI column
+                            cell_bg = "background:#cc0000;"; color = "#ffffff"; fw = "font-weight:900;"
+                        elif ci == 5 and is_max_p:  # Put OI column
+                            cell_bg = "background:#00aa44;"; color = "#ffffff"; fw = "font-weight:900;"
+                        else:
+                            cell_bg = ""
+                            fw      = ""
+                            if val.startswith("+") and val not in ("+0", "+0"): color = "#00e676"; fw = "font-weight:700;"
+                            elif val.startswith("-"):                            color = "#ff5252"; fw = "font-weight:700;"
+                            elif "Writers" in val:                               color = "#a78bfa"; fw = "font-weight:600;"
+                            elif "Buyers"  in val:                               color = "#ff8c00"; fw = "font-weight:600;"
+                            elif "Exit"    in val or "Unwind" in val:            color = "#6495b8"
+                            elif val == "—":                                     color = "#3a5068"
+                            else:                                                color = "#c8dff5"
+
+                        cells += (
+                            f'<td style="padding:7px 10px;color:{color};{cell_bg}{fw}'
+                            f'font-size:11px;font-family:\'JetBrains Mono\',monospace;'
+                            f'border-bottom:1px solid rgba(29,78,216,0.07);white-space:nowrap">{val}</td>'
+                        )
+                    rows_html += f'<tr style="{row_bg}">{cells}</tr>'
+
+                st.markdown(f"""
+                <div style="overflow-x:auto;border-radius:12px;border:1px solid rgba(29,78,216,0.2);margin-top:8px">
+                  <table style="width:100%;border-collapse:collapse;background:#060e1a">
+                    <thead><tr>{hdr_html}</tr></thead>
+                    <tbody>{rows_html}</tbody>
+                  </table>
+                </div>""", unsafe_allow_html=True)
                 st.markdown("""<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
                   <span style="color:#ff6666">🔴 Max Call OI = Resistance</span>
                   <span style="color:#00e676">🟢 Max Put OI = Support</span>
@@ -2907,115 +2755,6 @@ for tab, instrument, name, spot in [
                       📅 <b>Abhi koi history nahi</b> — Dashboard pehli baar 3:15 PM ke baad OI data save karega!<br>
                       <span style="font-size:11px;color:#6495b8">Har trading day ka closing OI automatically save hoga.</span>
                     </div>""", unsafe_allow_html=True)
-
-                # ── INTRADAY SNAPSHOTS ─────────────────────────
-                st.markdown("---")
-                st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">⏱️ Aaj Ka Intraday OI Movement (Har 30 Min)</div>', unsafe_allow_html=True)
-
-                intra_data = load_intraday_snapshots(hist_name)
-                if intra_data and len(intra_data) >= 2:
-                    # Chart — spot + PCR + total OI movement
-                    times      = [r["time"]                          for r in intra_data]
-                    spots      = [float(r.get("spot",0))             for r in intra_data]
-                    pcrs       = [float(r.get("pcr",0))              for r in intra_data]
-                    call_ois   = [int(float(r.get("total_call_oi",0)))for r in intra_data]
-                    put_ois    = [int(float(r.get("total_put_oi",0))) for r in intra_data]
-                    call_chgs  = [int(float(r.get("call_oi_change",0)))for r in intra_data]
-                    put_chgs   = [int(float(r.get("put_oi_change",0))) for r in intra_data]
-                    top_c_s    = [str(int(float(r.get("top_call_strike",0)))) for r in intra_data]
-                    top_p_s    = [str(int(float(r.get("top_put_strike",0))))  for r in intra_data]
-
-                    # Spot movement chart
-                    fig_intra = go.Figure()
-                    fig_intra.add_trace(go.Scatter(
-                        x=times, y=spots, name="Spot Price",
-                        line=dict(color="#00bfff", width=2),
-                        hovertemplate="Time: %{x}<br>Spot: %{y:,.2f}<extra></extra>"
-                    ))
-                    fig_intra.update_layout(
-                        title=dict(text=f"<b>{name} — Aaj Ka Spot Movement</b>", font=dict(size=13, color="#90b8d8")),
-                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
-                        height=220, margin=dict(l=10,r=10,t=40,b=10),
-                        xaxis=dict(gridcolor="rgba(29,78,216,0.1)", tickfont=dict(size=10, color="#6495b8")),
-                        yaxis=dict(gridcolor="rgba(29,78,216,0.1)", tickfont=dict(size=10, color="#6495b8"),
-                                   tickformat=",.0f"),
-                        legend=dict(font=dict(size=10, color="#90b8d8"), bgcolor="rgba(0,0,0,0)")
-                    )
-                    st.plotly_chart(fig_intra, use_container_width=True)
-
-                    # OI change chart
-                    fig_oi_chg = go.Figure()
-                    fig_oi_chg.add_trace(go.Bar(
-                        x=times, y=call_chgs, name="Call OI Change",
-                        marker_color=["rgba(255,82,82,0.9)" if v >= 0 else "rgba(0,230,118,0.9)" for v in call_chgs],
-                        hovertemplate="Time: %{x}<br>Call OI Chg: %{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi_chg.add_trace(go.Bar(
-                        x=times, y=put_chgs, name="Put OI Change",
-                        marker_color=["rgba(0,230,118,0.9)" if v >= 0 else "rgba(255,82,82,0.9)" for v in put_chgs],
-                        hovertemplate="Time: %{x}<br>Put OI Chg: %{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi_chg.update_layout(
-                        title=dict(text=f"<b>{name} — OI Change Har 30 Min</b>", font=dict(size=13, color="#90b8d8")),
-                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
-                        barmode="group", height=220, margin=dict(l=10,r=10,t=40,b=10),
-                        xaxis=dict(gridcolor="rgba(29,78,216,0.1)", tickfont=dict(size=10, color="#6495b8")),
-                        yaxis=dict(gridcolor="rgba(29,78,216,0.1)", tickfont=dict(size=10, color="#6495b8")),
-                        legend=dict(font=dict(size=10, color="#90b8d8"), bgcolor="rgba(0,0,0,0)")
-                    )
-                    st.plotly_chart(fig_oi_chg, use_container_width=True)
-
-                    # Intraday table
-                    intra_rows = ""
-                    for i, r in enumerate(intra_data):
-                        cc = int(float(r.get("call_oi_change",0)))
-                        pc = int(float(r.get("put_oi_change",0)))
-                        cc_col = "#00e676" if cc < 0 else "#ff5252"
-                        pc_col = "#00e676" if pc > 0 else "#ff5252"
-                        row_bg = "#0d1929" if i % 2 == 0 else "#060e1a"
-                        tc_oi  = int(float(r.get("total_call_oi",0)))
-                        tp_oi  = int(float(r.get("total_put_oi",0)))
-                        def fmt(v):
-                            if v>=10000000: return f"{v/10000000:.1f}Cr"
-                            elif v>=100000: return f"{v/100000:.1f}L"
-                            elif v>=1000:   return f"{v/1000:.0f}K"
-                            return str(v)
-                        intra_rows += f"""<tr style="background:{row_bg}">
-                          <td style="padding:6px 10px;color:#60a5fa;font-weight:700;font-size:12px">{r.get("time","")}</td>
-                          <td style="padding:6px 10px;color:#00bfff;font-size:12px">{float(r.get("spot",0)):,.0f}</td>
-                          <td style="padding:6px 10px;color:#a78bfa;font-size:12px">{float(r.get("pcr",0)):.3f}</td>
-                          <td style="padding:6px 10px;color:#ff8888;font-size:11px">{r.get("top_call_strike","")}</td>
-                          <td style="padding:6px 10px;color:#ff5252;font-size:11px">{fmt(tc_oi)}</td>
-                          <td style="padding:6px 10px;color:{cc_col};font-size:11px;font-weight:700">{"+" if cc>=0 else ""}{fmt(cc)}</td>
-                          <td style="padding:6px 10px;color:#88ff88;font-size:11px">{r.get("top_put_strike","")}</td>
-                          <td style="padding:6px 10px;color:#00e676;font-size:11px">{fmt(tp_oi)}</td>
-                          <td style="padding:6px 10px;color:{pc_col};font-size:11px;font-weight:700">{"+" if pc>=0 else ""}{fmt(pc)}</td>
-                        </tr>"""
-
-                    st.markdown(f"""
-                    <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2);margin-top:8px">
-                    <table style="width:100%;border-collapse:collapse;background:#060e1a;font-family:'JetBrains Mono',monospace">
-                      <thead><tr style="background:rgba(29,78,216,0.15);border-bottom:1px solid rgba(29,78,216,0.3)">
-                        <th style="padding:7px 10px;color:#4e7a96;font-size:10px;text-transform:uppercase">Time</th>
-                        <th style="padding:7px 10px;color:#00bfff;font-size:10px;text-transform:uppercase">Spot</th>
-                        <th style="padding:7px 10px;color:#a78bfa;font-size:10px;text-transform:uppercase">PCR</th>
-                        <th style="padding:7px 10px;color:#ff5252;font-size:10px;text-transform:uppercase">Top Call</th>
-                        <th style="padding:7px 10px;color:#ff5252;font-size:10px;text-transform:uppercase">Call OI</th>
-                        <th style="padding:7px 10px;color:#ff8888;font-size:10px;text-transform:uppercase">Call Chg</th>
-                        <th style="padding:7px 10px;color:#00e676;font-size:10px;text-transform:uppercase">Top Put</th>
-                        <th style="padding:7px 10px;color:#00e676;font-size:10px;text-transform:uppercase">Put OI</th>
-                        <th style="padding:7px 10px;color:#88ff88;font-size:10px;text-transform:uppercase">Put Chg</th>
-                      </tr></thead>
-                      <tbody>{intra_rows}</tbody>
-                    </table></div>
-                    <div style="font-size:11px;color:#6495b8;margin-top:6px">
-                      💾 Intraday snapshots save hoti hain: <b style="color:#00bfff">{INTRADAY_DIR}</b> | 7 din ka data rakha jaata hai
-                    </div>""", unsafe_allow_html=True)
-
-                elif intra_data and len(intra_data) == 1:
-                    st.markdown('<div style="background:#1d4ed812;border:1px solid #1d4ed840;border-radius:8px;padding:10px 14px;font-size:12px;color:#60a5fa">⏳ 1 snapshot mila — aur data aane pe chart dikhega (har 30 min pe update hota hai)</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown('<div style="background:#0f1e3580;border:1px solid #1d4ed830;border-radius:8px;padding:10px 14px;font-size:12px;color:#6495b8">⏳ Aaj ka intraday data abhi collect ho raha hai — market hours (9:15 AM - 3:30 PM) mein har 30 min pe automatically save hoga</div>', unsafe_allow_html=True)
 
                 # ══════════════════════════════════════════════
                 # 🎯 STRIKE PRICE SELECTOR — Detail View
