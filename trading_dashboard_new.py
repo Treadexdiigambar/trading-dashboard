@@ -890,110 +890,6 @@ def calculate_vwap_atr(candles):
 
     return vwap, atr, last_close
 
-def calculate_rsi(candles, period=14):
-    """
-    RSI = 100 - (100 / (1 + RS))
-    RS  = Average Gain / Average Loss over period candles
-    Returns: rsi_value, candle_pattern, rsi_signal
-    """
-    if not candles or len(candles) < period + 2:
-        return None, None, None
-
-    closes = []
-    for c in candles:
-        try:
-            closes.append(float(c[4]))
-        except Exception:
-            continue
-
-    if len(closes) < period + 2:
-        return None, None, None
-
-    # Calculate gains and losses
-    gains  = []
-    losses = []
-    for i in range(1, len(closes)):
-        diff = closes[i] - closes[i-1]
-        gains.append(max(diff, 0))
-        losses.append(max(-diff, 0))
-
-    # Initial average
-    avg_gain = sum(gains[:period]) / period
-    avg_loss = sum(losses[:period]) / period
-
-    # Smoothed RSI (Wilder's method)
-    for i in range(period, len(gains)):
-        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
-        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
-
-    if avg_loss == 0:
-        rsi = 100.0
-    else:
-        rs  = avg_gain / avg_loss
-        rsi = round(100 - (100 / (1 + rs)), 2)
-
-    # Candle pattern detect (last 3 candles)
-    pattern = None
-    if len(candles) >= 3:
-        c1 = candles[-3]  # 3 candles ago
-        c2 = candles[-2]  # previous candle
-        c3 = candles[-1]  # current candle
-        try:
-            o3,h3,l3,cl3 = float(c3[1]),float(c3[2]),float(c3[3]),float(c3[4])
-            o2,h2,l2,cl2 = float(c2[1]),float(c2[2]),float(c2[3]),float(c2[4])
-            o1,h1,l1,cl1 = float(c1[1]),float(c1[2]),float(c1[3]),float(c1[4])
-            body3  = abs(cl3 - o3)
-            range3 = h3 - l3 if h3 != l3 else 0.01
-            upper_shadow3 = h3 - max(o3, cl3)
-            lower_shadow3 = min(o3, cl3) - l3
-
-            # Hammer: small body upar, lambi lower shadow
-            if lower_shadow3 > body3 * 2 and upper_shadow3 < body3 * 0.5 and cl3 > o3:
-                pattern = "🔨 Hammer"
-            # Shooting Star: small body neeche, lambi upper shadow
-            elif upper_shadow3 > body3 * 2 and lower_shadow3 < body3 * 0.5 and cl3 < o3:
-                pattern = "⭐ Shooting Star"
-            # Bullish Engulfing
-            elif cl2 < o2 and cl3 > o3 and cl3 > o2 and o3 < cl2:
-                pattern = "📈 Bullish Engulfing"
-            # Bearish Engulfing
-            elif cl2 > o2 and cl3 < o3 and cl3 < o2 and o3 > cl2:
-                pattern = "📉 Bearish Engulfing"
-            # Doji: very small body
-            elif body3 < range3 * 0.1:
-                pattern = "➕ Doji"
-            # Morning Star
-            elif (cl1 < o1) and (abs(cl2-o2) < (h2-l2)*0.3) and (cl3 > o3) and (cl3 > (o1+cl1)/2):
-                pattern = "🌅 Morning Star"
-            # Evening Star
-            elif (cl1 > o1) and (abs(cl2-o2) < (h2-l2)*0.3) and (cl3 < o3) and (cl3 < (o1+cl1)/2):
-                pattern = "🌆 Evening Star"
-            # Bullish Pin Bar
-            elif lower_shadow3 > range3 * 0.6 and body3 < range3 * 0.3:
-                pattern = "📌 Bullish Pin Bar"
-            # Bearish Pin Bar
-            elif upper_shadow3 > range3 * 0.6 and body3 < range3 * 0.3:
-                pattern = "📌 Bearish Pin Bar"
-        except Exception:
-            pass
-
-    # RSI Signal
-    if rsi is not None:
-        if rsi <= 30:
-            rsi_signal = ("OVERSOLD", "#00e676", "Strong Buy zone — reversal likely")
-        elif rsi <= 40:
-            rsi_signal = ("RECOVERY", "#4ade80", "Oversold se nikal raha — buy consider karo")
-        elif rsi <= 60:
-            rsi_signal = ("NEUTRAL", "#ffd600", "Neutral zone — wait karo")
-        elif rsi <= 70:
-            rsi_signal = ("OVERBOUGHT", "#ff8c00", "Overbought mein ja raha — sell consider karo")
-        else:
-            rsi_signal = ("EXTREME HIGH", "#ff5252", "Extreme overbought — reversal likely")
-    else:
-        rsi_signal = None
-
-    return rsi, pattern, rsi_signal
-
 def extract_ohlc(data, instrument):
     """OHLC endpoint se open, high, low, close nikalo"""
     key = instrument.replace("|", ":")
@@ -2565,90 +2461,43 @@ for tab, instrument, name, spot in [
                       <span style="color:#6495b8;font-size:11px">{active_label}</span>
                     </div>""", unsafe_allow_html=True)
 
-                # ── Chart toggle: OI vs OI Change ─────────────
-                chart_mode = st.radio(
-                    "📊 Chart Mode:",
-                    ["OI (Total)", "OI Change (Increase/Decrease)"],
-                    horizontal=True,
-                    key=f"chart_mode_{name}"
-                )
 
-                # OI Chart
+                # ── Top 3 OI Highlights ───────────────────────
+                top3_call = df_d.nlargest(3, "Call OI")["Strike"].tolist()
+                top3_put  = df_d.nlargest(3, "Put OI")["Strike"].tolist()
+                call_colors = ["rgba(255,34,34,1.0)"  if s in top3_call else "rgba(255,82,82,0.35)"  for s in df_d["Strike"].tolist()]
+                put_colors  = ["rgba(0,255,136,1.0)"  if s in top3_put  else "rgba(0,230,118,0.35)"  for s in df_d["Strike"].tolist()]
+
+                top_c_str = " | ".join([f"{int(s):,}" for s in top3_call])
+                top_p_str = " | ".join([f"{int(s):,}" for s in top3_put])
+                st.markdown(f"""
+                <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+                  <div style="background:rgba(255,34,34,0.1);border:1px solid rgba(255,34,34,0.4);border-radius:8px;padding:7px 14px;font-size:12px">
+                    🔴 <b style="color:#ff2222">Top Call OI (Resistance):</b>
+                    <span style="color:#ff8888;font-family:'JetBrains Mono',monospace;font-weight:700"> {top_c_str}</span>
+                  </div>
+                  <div style="background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.4);border-radius:8px;padding:7px 14px;font-size:12px">
+                    🟢 <b style="color:#00ff88">Top Put OI (Support):</b>
+                    <span style="color:#00e676;font-family:'JetBrains Mono',monospace;font-weight:700"> {top_p_str}</span>
+                  </div>
+                </div>""", unsafe_allow_html=True)
+
+                # OI Chart — sirf Total OI
                 fig_oi = go.Figure()
-
-                if chart_mode == "OI (Total)":
-                    # ── Original OI bars ──────────────────────
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Call OI"],
-                        name="Call OI (Resistance)",
-                        marker_color="#ff5252", marker_opacity=0.85
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Put OI"],
-                        name="Put OI (Support)",
-                        marker_color="#00e676", marker_opacity=0.85
-                    ))
-                    chart_title = f"<b>{name} OI — Big Players Position</b>"
-                    y_title = "Open Interest"
-
-                else:
-                    # ── OI Change — Increase/Decrease alag alag ──
-                    # Call OI Increase (positive change) — solid red
-                    call_inc = df_d["Call OI Change"].clip(lower=0)
-                    # Call OI Decrease (negative change) — hatched/light red
-                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
-                    # Put OI Increase (positive change) — solid green
-                    put_inc  = df_d["Put OI Change"].clip(lower=0)
-                    # Put OI Decrease (negative change) — hatched/light green
-                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
-
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_inc,
-                        name="Call OI Increase ▲",
-                        marker=dict(color="#ff5252", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Call Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_dec,
-                        name="Call OI Decrease ▼",
-                        marker=dict(color="#ff5252", opacity=0.3,
-                                    pattern=dict(shape="/", fgcolor="#ff5252", bgcolor="rgba(255,82,82,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Call Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_inc,
-                        name="Put OI Increase ▲",
-                        marker=dict(color="#00e676", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Put Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_dec,
-                        name="Put OI Decrease ▼",
-                        marker=dict(color="#00e676", opacity=0.3,
-                                    pattern=dict(shape="\\", fgcolor="#00e676", bgcolor="rgba(0,230,118,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-
-                    # Net OI change summary
-                    net_call = int(df_d["Call OI Change"].sum())
-                    net_put  = int(df_d["Put OI Change"].sum())
-                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
-                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
-                    st.markdown(f"""
-                    <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
-                      <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
-                      </div>
-                      <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
-                    y_title = "OI Change"
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"].tolist(), y=df_d["Call OI"].tolist(),
+                    name="Call OI (Resistance)",
+                    marker_color=call_colors,
+                    hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
+                ))
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"].tolist(), y=df_d["Put OI"].tolist(),
+                    name="Put OI (Support)",
+                    marker_color=put_colors,
+                    hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
+                ))
+                chart_title = f"<b>{name} OI — Big Players Position</b>"
+                y_title     = "Open Interest"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
                                  annotation_text=f"ATM {atm}", annotation_font_color="#ffd600")
@@ -2676,15 +2525,6 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
-
-                # Legend explanation
-                if chart_mode == "OI Change (Increase/Decrease)":
-                    st.markdown("""<div style="display:flex;gap:16px;margin-top:4px;font-size:11px;flex-wrap:wrap">
-                      <span>🔴 <b>Solid Red</b> = Call OI Badha (Bears position add kar rahe)</span>
-                      <span>🔴 <b>Light Red</b> = Call OI Ghata (Bears exit kar rahe)</span>
-                      <span>🟢 <b>Solid Green</b> = Put OI Badha (Bulls position add kar rahe)</span>
-                      <span>🟢 <b>Light Green</b> = Put OI Ghata (Bulls exit kar rahe)</span>
-                    </div>""", unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
@@ -2784,8 +2624,47 @@ for tab, instrument, name, spot in [
                         elif "Unwind"  in val:  return "color:#ff5252"
                     return ""
 
-                st.dataframe(oi_table.style.apply(style_oi_row, axis=1)
-                             .map(color_chg, subset=["Call OI Chg","Put OI Chg","📊 Call Who","📊 Put Who"]), use_container_width=True, hide_index=True)
+                # ── Dark HTML table ────────────────────────────
+                tbl_rows_html = ""
+                for idx, trow in oi_table.iterrows():
+                    raw_r    = oi_raw.loc[idx]
+                    is_atm_r = raw_r["Strike"] == atm
+                    is_max_c = raw_r["Call OI"] == max_call_oi
+                    is_max_p = raw_r["Put OI"]  == max_put_oi
+                    row_bg   = "background:rgba(255,214,0,0.06);" if is_atm_r else (
+                               "background:#060e1a;" if idx % 2 == 0 else "background:#0a1525;")
+                    cells = ""
+                    for ci, col in enumerate(oi_table.columns):
+                        val = str(trow[col])
+                        if   ci == 3 and is_max_c: color="#fff"; bg="background:#cc0000;"; fw="font-weight:900;"
+                        elif ci == 5 and is_max_p: color="#fff"; bg="background:#00aa44;"; fw="font-weight:900;"
+                        elif val.startswith("+") and val != "+0": color="#00e676"; bg=""; fw="font-weight:700;"
+                        elif val.startswith("-"):   color="#ff5252"; bg=""; fw="font-weight:700;"
+                        elif "Writers" in val:      color="#a78bfa"; bg=""; fw="font-weight:600;"
+                        elif "Buyers"  in val:      color="#ff8c00"; bg=""; fw="font-weight:600;"
+                        elif "Long Build" in val:   color="#00ff88"; bg=""; fw=""
+                        elif "Short Build" in val:  color="#ff4444"; bg=""; fw=""
+                        elif "Short Cover" in val:  color="#ffd600"; bg=""; fw=""
+                        elif "Long Unwind" in val:  color="#ff8c00"; bg=""; fw=""
+                        elif "Exit" in val or "Unwind" in val: color="#6495b8"; bg=""; fw=""
+                        elif val == "—":            color="#3a5068"; bg=""; fw=""
+                        else:                       color="#c8dff5"; bg=""; fw=""
+                        cells += (f'<td style="padding:6px 9px;color:{color};{bg}{fw}'
+                                  f'font-size:11px;font-family:\'JetBrains Mono\',monospace;'
+                                  f'border-bottom:1px solid rgba(29,78,216,0.08);white-space:nowrap">{val}</td>')
+                    tbl_rows_html += f'<tr style="{row_bg}">{cells}</tr>'
+
+                col_headers = "".join(
+                    f'<th style="padding:7px 9px;text-align:left;color:#4e7a96;font-size:10px;'
+                    f'text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid '
+                    f'rgba(29,78,216,0.25);white-space:nowrap;background:rgba(29,78,216,0.15)">{c}</th>'
+                    for c in oi_table.columns)
+                st.markdown(f"""
+                <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2);margin-top:6px">
+                <table style="width:100%;border-collapse:collapse;background:#060e1a">
+                  <thead><tr>{col_headers}</tr></thead>
+                  <tbody>{tbl_rows_html}</tbody>
+                </table></div>""", unsafe_allow_html=True)
                 st.markdown("""<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
                   <span style="color:#ff6666">🔴 Max Call OI = Resistance</span>
                   <span style="color:#00e676">🟢 Max Put OI = Support</span>
@@ -2904,179 +2783,6 @@ for tab, instrument, name, spot in [
                         <span>Low</span><span style="color:#00bfff">Spot at {spot_pos}% of range</span><span>High</span>
                       </div>
                     </div>""", unsafe_allow_html=True)
-
-                # ══ RSI + CANDLE PATTERN ═══════════════════════
-                st.markdown("---")
-                st.markdown('<div class="sec-header" style="border-left:3px solid #f59e0b">📊 RSI + Candle Pattern Signal</div>', unsafe_allow_html=True)
-
-                try:
-                    # Fetch 15 min candles for RSI
-                    rsi_instr = "NSE_INDEX|Nifty 50" if name == "NIFTY" else ("NSE_INDEX|Nifty Bank" if name == "BANK NIFTY" else "BSE_INDEX|SENSEX")
-
-                    rsi_col1, rsi_col2 = st.columns([1,2])
-                    with rsi_col1:
-                        rsi_tf = st.selectbox("Timeframe:", ["15minute","5minute","30minute","1minute"],
-                                              key=f"rsi_tf_{name}", index=0)
-
-                    with st.spinner("RSI calculate ho raha hai..."):
-                        rsi_candles = safe_api_call(get_intraday_candles, token, rsi_instr, rsi_tf, fallback=[])
-
-                    if rsi_candles and len(rsi_candles) >= 16:
-                        rsi_val, candle_pat, rsi_sig = calculate_rsi(rsi_candles, period=14)
-
-                        if rsi_val is not None:
-                            sig_label, sig_color, sig_desc = rsi_sig
-
-                            # RSI gauge bar
-                            rsi_pct = min(max(rsi_val, 0), 100)
-                            gauge_color = sig_color
-
-                            st.markdown(f"""
-                            <div style="background:#0d1929;border:1px solid rgba(29,78,216,0.2);border-radius:12px;padding:16px;margin-bottom:10px">
-                              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                                <div>
-                                  <div style="font-size:11px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">RSI (14) — {rsi_tf.replace('minute',' Min')}</div>
-                                  <div style="font-size:42px;font-weight:900;color:{gauge_color};font-family:'JetBrains Mono',monospace;line-height:1">{rsi_val}</div>
-                                </div>
-                                <div style="text-align:right">
-                                  <div style="font-size:15px;font-weight:800;color:{gauge_color}">{sig_label}</div>
-                                  <div style="font-size:11px;color:#90b8d8;margin-top:4px;max-width:200px;text-align:right">{sig_desc}</div>
-                                </div>
-                              </div>
-
-                              <div style="position:relative;height:10px;background:#0a1020;border-radius:5px;margin-bottom:6px;overflow:hidden">
-                                <div style="position:absolute;left:0;top:0;width:30%;height:100%;background:#14532d;opacity:0.5"></div>
-                                <div style="position:absolute;left:60%;top:0;width:40%;height:100%;background:#7f1d1d;opacity:0.5"></div>
-                                <div style="position:absolute;left:{rsi_pct}%;top:-2px;width:4px;height:14px;background:{gauge_color};border-radius:2px;transform:translateX(-50%)"></div>
-                              </div>
-                              <div style="display:flex;justify-content:space-between;font-size:9px;color:#4e7a96;margin-bottom:4px">
-                                <span>0</span><span style="color:#4ade80">30</span><span>50</span><span style="color:#ff5252">70</span><span>100</span>
-                              </div>
-                            </div>""", unsafe_allow_html=True)
-
-                            # Candle pattern
-                            if candle_pat:
-                                pat_bullish = any(x in candle_pat for x in ["Hammer","Bullish","Morning","Pin Bar"])
-                                pat_bearish = any(x in candle_pat for x in ["Shooting","Bearish","Evening"])
-                                pat_neutral = "Doji" in candle_pat
-                                pat_col = "#00e676" if pat_bullish else ("#ff5252" if pat_bearish else "#ffd600")
-                                pat_desc = "Bullish reversal signal" if pat_bullish else ("Bearish reversal signal" if pat_bearish else "Indecision — wait karo")
-                                st.markdown(f"""
-                                <div style="background:#0f1e35;border:1px solid {pat_col}40;border-radius:8px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-                                  <div>
-                                    <div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Candle Pattern</div>
-                                    <div style="font-size:18px;font-weight:800;color:{pat_col}">{candle_pat}</div>
-                                  </div>
-                                  <div style="font-size:12px;color:{pat_col};text-align:right">{pat_desc}</div>
-                                </div>""", unsafe_allow_html=True)
-                            else:
-                                st.markdown('<div style="background:#0f1e35;border:1px solid #30363d;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#6495b8">⚪ Koi special candle pattern nahi — neutral</div>', unsafe_allow_html=True)
-
-                            # RSI + OI Combo Signal
-                            st.markdown('<div style="font-size:11px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px">RSI + OI Combo Signal</div>', unsafe_allow_html=True)
-
-                            # Get OI direction
-                            oi_call_chg = int(df_d["Call OI Change"].sum())
-                            oi_put_chg  = int(df_d["Put OI Change"].sum())
-                            oi_bullish  = oi_put_chg > 0 and oi_call_chg <= 0
-                            oi_bearish  = oi_call_chg > 0 and oi_put_chg <= 0
-
-                            combos = []
-                            # RSI oversold + bullish candle + OI bullish = STRONG BUY
-                            if rsi_val <= 40 and candle_pat and pat_bullish and oi_bullish:
-                                combos.append(("🟢 STRONG BUY", "#00e676", "#052e16", "#166534",
-                                               f"RSI {rsi_val} oversold + {candle_pat} + Put OI building = High probability BUY"))
-                            elif rsi_val <= 40 and oi_bullish:
-                                combos.append(("🟢 BUY SETUP", "#4ade80", "#0a2d15", "#14532d",
-                                               f"RSI {rsi_val} oversold + Put OI building = Buy consider karo"))
-                            elif rsi_val <= 40 and candle_pat and pat_bullish:
-                                combos.append(("🟢 PARTIAL BUY", "#4ade80", "#0a2d15", "#14532d",
-                                               f"RSI oversold + {candle_pat} — OI confirm ka wait karo"))
-
-                            # RSI overbought + bearish candle + OI bearish = STRONG SELL
-                            if rsi_val >= 60 and candle_pat and pat_bearish and oi_bearish:
-                                combos.append(("🔴 STRONG SELL", "#ff5252", "#2d1010", "#7f1d1d",
-                                               f"RSI {rsi_val} overbought + {candle_pat} + Call OI building = High probability SELL"))
-                            elif rsi_val >= 60 and oi_bearish:
-                                combos.append(("🔴 SELL SETUP", "#f87171", "#2d1010", "#7f1d1d",
-                                               f"RSI {rsi_val} overbought + Call OI building = Sell consider karo"))
-                            elif rsi_val >= 60 and candle_pat and pat_bearish:
-                                combos.append(("🔴 PARTIAL SELL", "#f87171", "#2d1010", "#7f1d1d",
-                                               f"RSI overbought + {candle_pat} — OI confirm ka wait karo"))
-
-                            # Divergence check (simple)
-                            if len(rsi_candles) >= 30:
-                                prev_closes = [float(c[4]) for c in rsi_candles[-30:-15]]
-                                curr_closes = [float(c[4]) for c in rsi_candles[-15:]]
-                                prev_rsi, _, _ = calculate_rsi(rsi_candles[:-15], period=14)
-                                if prev_rsi and rsi_val:
-                                    price_went_up = curr_closes[-1] > prev_closes[-1]
-                                    rsi_went_down = rsi_val < prev_rsi
-                                    if price_went_up and rsi_went_down:
-                                        combos.append(("⚠️ BEARISH DIVERGENCE", "#fbbf24", "#2d1f00", "#854f0b",
-                                                       f"Price upar gaya lekin RSI {prev_rsi:.0f}→{rsi_val} neeche — reversal warning!"))
-                                    price_went_down = curr_closes[-1] < prev_closes[-1]
-                                    rsi_went_up    = rsi_val > prev_rsi
-                                    if price_went_down and rsi_went_up:
-                                        combos.append(("✅ BULLISH DIVERGENCE", "#4ade80", "#052e16", "#166534",
-                                                       f"Price neeche gaya lekin RSI {prev_rsi:.0f}→{rsi_val} upar — bounce likely!"))
-
-                            if not combos:
-                                combos.append(("⚪ NEUTRAL — WAIT", "#6495b8", "#0d1929", "#30363d",
-                                               f"RSI {rsi_val} neutral zone — clear signal ka wait karo"))
-
-                            for label, color, bg, border, desc in combos:
-                                st.markdown(f"""
-                                <div style="background:{bg};border:1.5px solid {border};border-radius:10px;
-                                     padding:12px 16px;margin-bottom:8px">
-                                  <div style="font-size:16px;font-weight:900;color:{color}">{label}</div>
-                                  <div style="font-size:11px;color:#90b8d8;margin-top:4px">{desc}</div>
-                                </div>""", unsafe_allow_html=True)
-
-                            # Last few candles table
-                            with st.expander("📋 Last 5 Candles dekho"):
-                                last5 = rsi_candles[-5:]
-                                c_rows = ""
-                                for ci, c in enumerate(last5):
-                                    try:
-                                        ts_s = str(c[0])[:16].replace("T"," ")
-                                        o_c,h_c,l_c,cl_c = float(c[1]),float(c[2]),float(c[3]),float(c[4])
-                                        vol_c = int(float(c[5])) if len(c)>5 else 0
-                                        is_green = cl_c >= o_c
-                                        c_col = "#00e676" if is_green else "#ff5252"
-                                        chg_c = round(cl_c - o_c, 2)
-                                        c_rows += f"""<tr style="border-bottom:1px solid rgba(29,78,216,0.1)">
-                                          <td style="padding:5px 8px;color:#6495b8;font-size:10px">{ts_s}</td>
-                                          <td style="padding:5px 8px;color:#90b8d8;font-size:11px">{o_c:,.1f}</td>
-                                          <td style="padding:5px 8px;color:#ff8888;font-size:11px">{h_c:,.1f}</td>
-                                          <td style="padding:5px 8px;color:#88ff88;font-size:11px">{l_c:,.1f}</td>
-                                          <td style="padding:5px 8px;color:{c_col};font-weight:700;font-size:11px">{cl_c:,.1f}</td>
-                                          <td style="padding:5px 8px;color:{c_col};font-size:11px">{"▲" if is_green else "▼"} {abs(chg_c):.1f}</td>
-                                        </tr>"""
-                                    except Exception:
-                                        continue
-                                st.markdown(f"""
-                                <div style="overflow-x:auto;border-radius:8px;border:1px solid rgba(29,78,216,0.2)">
-                                <table style="width:100%;border-collapse:collapse;background:#060e1a;font-family:'JetBrains Mono',monospace">
-                                  <thead><tr style="background:rgba(29,78,216,0.15)">
-                                    <th style="padding:6px 8px;color:#4e7a96;font-size:10px;text-align:left">Time</th>
-                                    <th style="padding:6px 8px;color:#4e7a96;font-size:10px;text-align:left">Open</th>
-                                    <th style="padding:6px 8px;color:#ff8888;font-size:10px;text-align:left">High</th>
-                                    <th style="padding:6px 8px;color:#88ff88;font-size:10px;text-align:left">Low</th>
-                                    <th style="padding:6px 8px;color:#90b8d8;font-size:10px;text-align:left">Close</th>
-                                    <th style="padding:6px 8px;color:#4e7a96;font-size:10px;text-align:left">Chg</th>
-                                  </tr></thead>
-                                  <tbody>{c_rows}</tbody>
-                                </table></div>""", unsafe_allow_html=True)
-                    else:
-                        candle_count = len(rsi_candles) if rsi_candles else 0
-                        st.markdown(f"""
-                        <div style="background:#0f1e35;border:1px solid #1d4ed840;border-radius:8px;padding:12px 16px;font-size:12px;color:#60a5fa">
-                          ⏳ RSI ke liye {candle_count} candles mili — kam se kam 16 chahiye.<br>
-                          <span style="color:#6495b8">Market hours mein data aayega (9:15 AM - 3:30 PM)</span>
-                        </div>""", unsafe_allow_html=True)
-                except Exception as _rsi_err:
-                    st.markdown(f'<div style="font-size:11px;color:#6495b8;padding:8px">RSI error: {_rsi_err}</div>', unsafe_allow_html=True)
                 else:
                     st.info("⏳ Day range data market hours mein aayega")
 
