@@ -913,97 +913,6 @@ def extract_prev_close(data, instrument):
         q.get("close_price")      or
         q.get("last_close_price")
     )
-
-def calculate_supply_demand_zones(df_oi, spot, atm, top_n=5):
-    """
-    Supply/Demand zones detect karo OI data se.
-    Returns list of zones with strength rating.
-    """
-    zones = {"supply": [], "demand": []}
-    if df_oi is None or df_oi.empty:
-        return zones
-
-    try:
-        df = df_oi.copy()
-        df["Strike"] = df["Strike"].astype(float)
-
-        # ── Max OI values for strength calculation ─────
-        max_call_oi = df["Call OI"].max() if "Call OI" in df.columns else 1
-        max_put_oi  = df["Put OI"].max()  if "Put OI"  in df.columns else 1
-
-        # ── SUPPLY ZONES — Top Call OI strikes ─────────
-        top_calls = df.nlargest(top_n, "Call OI")
-        for _, row in top_calls.iterrows():
-            strike       = int(row["Strike"])
-            call_oi      = int(row["Call OI"])
-            call_oi_chg  = int(row.get("Call OI Change", 0))
-            call_ltp     = float(row.get("Call LTP", 0))
-
-            # Zone strength
-            oi_pct       = (call_oi / max_call_oi) * 100
-            if oi_pct >= 80:    strength = "STRONG";   str_col = "#ff2222"; str_stars = "★★★"
-            elif oi_pct >= 50:  strength = "MODERATE"; str_col = "#ff8c00"; str_stars = "★★☆"
-            else:               strength = "WEAK";     str_col = "#ff525280"; str_stars = "★☆☆"
-
-            # Is fresh supply building?
-            fresh  = call_oi_chg > 0
-            # Distance from spot
-            dist   = round(strike - spot, 0) if spot else 0
-            above  = strike > (spot or 0)
-
-            zones["supply"].append({
-                "strike":   strike,
-                "oi":       call_oi,
-                "oi_chg":   call_oi_chg,
-                "strength": strength,
-                "str_col":  str_col,
-                "str_stars":str_stars,
-                "fresh":    fresh,
-                "dist":     dist,
-                "above":    above,
-                "ltp":      call_ltp,
-                "oi_pct":   round(oi_pct, 1),
-            })
-
-        # ── DEMAND ZONES — Top Put OI strikes ──────────
-        top_puts = df.nlargest(top_n, "Put OI")
-        for _, row in top_puts.iterrows():
-            strike      = int(row["Strike"])
-            put_oi      = int(row["Put OI"])
-            put_oi_chg  = int(row.get("Put OI Change", 0))
-            put_ltp     = float(row.get("Put LTP", 0))
-
-            oi_pct      = (put_oi / max_put_oi) * 100
-            if oi_pct >= 80:    strength = "STRONG";   str_col = "#00ff88"; str_stars = "★★★"
-            elif oi_pct >= 50:  strength = "MODERATE"; str_col = "#4ade80"; str_stars = "★★☆"
-            else:               strength = "WEAK";     str_col = "#00e67660"; str_stars = "★☆☆"
-
-            fresh  = put_oi_chg > 0
-            dist   = round(spot - strike, 0) if spot else 0
-            below  = strike < (spot or 0)
-
-            zones["demand"].append({
-                "strike":   strike,
-                "oi":       put_oi,
-                "oi_chg":   put_oi_chg,
-                "strength": strength,
-                "str_col":  str_col,
-                "str_stars":str_stars,
-                "fresh":    fresh,
-                "dist":     dist,
-                "below":    below,
-                "ltp":      put_ltp,
-                "oi_pct":   round(oi_pct, 1),
-            })
-
-        # Sort by strength (closest to spot first)
-        zones["supply"].sort(key=lambda x: abs(x["dist"]))
-        zones["demand"].sort(key=lambda x: abs(x["dist"]))
-
-    except Exception as e:
-        print(f"[WARN] Supply/Demand zone calc failed: {e}")
-
-    return zones
     if not prev_close:
         # Fallback: net_change se calculate
         last = q.get("last_price", None)
@@ -2899,186 +2808,183 @@ for tab, instrument, name, spot in [
                 st.markdown('<div class="sec-header" style="border-left:3px solid #ff6b35">🏔️ Supply & Demand Zones — Big Players Ka Wall</div>', unsafe_allow_html=True)
 
                 try:
-                    sd_zones = calculate_supply_demand_zones(df_d, spot, atm, top_n=5)
-                    supply_z = sd_zones["supply"]
-                    demand_z = sd_zones["demand"]
+                    def _fmt_oi(v):
+                        v = int(v)
+                        if v >= 10000000: return f"{v/10000000:.1f}Cr"
+                        elif v >= 100000: return f"{v/100000:.1f}L"
+                        elif v >= 1000:   return f"{v/1000:.0f}K"
+                        return str(v)
 
-                    # Nearest zones to spot
-                    nearest_supply = next((z for z in supply_z if z["above"]), supply_z[0] if supply_z else None)
-                    nearest_demand = next((z for z in demand_z if z["below"]), demand_z[0] if demand_z else None)
+                    # ── Calculate zones ───────────────────────
+                    max_call = df_d["Call OI"].max()
+                    max_put  = df_d["Put OI"].max()
 
-                    # Overall zone signal
-                    if nearest_supply and nearest_demand and spot:
-                        supply_dist = abs(nearest_supply["dist"])
-                        demand_dist = abs(nearest_demand["dist"])
-                        zone_range  = nearest_supply["strike"] - nearest_demand["strike"]
-                        spot_in_pct = round(((spot - nearest_demand["strike"]) / zone_range * 100) if zone_range > 0 else 50, 1)
+                    supply_zones = []
+                    demand_zones = []
 
-                        if spot_in_pct >= 75:
-                            zone_bias = "🔴 Supply Zone ke PAAS — Resistance strong"
-                            zone_col  = "#ff5252"; zone_bg = "#ff525215"
-                            zone_desc = f"Spot supply zone se sirf {supply_dist:.0f} pts door — sellers active ho sakte hain"
-                        elif spot_in_pct <= 25:
-                            zone_bias = "🟢 Demand Zone ke PAAS — Support strong"
-                            zone_col  = "#00e676"; zone_bg = "#00e67615"
-                            zone_desc = f"Spot demand zone se sirf {demand_dist:.0f} pts door — buyers active ho sakte hain"
+                    for _, row in df_d.nlargest(5, "Call OI").iterrows():
+                        s      = int(row["Strike"])
+                        c_oi   = int(row["Call OI"])
+                        c_chg  = int(row.get("Call OI Change", 0))
+                        pct    = (c_oi / max_call * 100) if max_call > 0 else 0
+                        dist   = round(s - (spot or 0), 0)
+                        above  = s > (spot or 0)
+                        fresh  = c_chg > 0
+                        if pct >= 80:   strength="STRONG";   stars="★★★"; scol="#ff2222"
+                        elif pct >= 50: strength="MODERATE"; stars="★★☆"; scol="#ff8c00"
+                        else:           strength="WEAK";     stars="★☆☆"; scol="#ff525280"
+                        supply_zones.append(dict(strike=s, oi=c_oi, chg=c_chg, pct=pct,
+                                                  dist=dist, above=above, fresh=fresh,
+                                                  strength=strength, stars=stars, scol=scol))
+
+                    for _, row in df_d.nlargest(5, "Put OI").iterrows():
+                        s      = int(row["Strike"])
+                        p_oi   = int(row["Put OI"])
+                        p_chg  = int(row.get("Put OI Change", 0))
+                        pct    = (p_oi / max_put * 100) if max_put > 0 else 0
+                        dist   = round((spot or 0) - s, 0)
+                        below  = s < (spot or 0)
+                        fresh  = p_chg > 0
+                        if pct >= 80:   strength="STRONG";   stars="★★★"; scol="#00ff88"
+                        elif pct >= 50: strength="MODERATE"; stars="★★☆"; scol="#4ade80"
+                        else:           strength="WEAK";     stars="★☆☆"; scol="#00e67660"
+                        demand_zones.append(dict(strike=s, oi=p_oi, chg=p_chg, pct=pct,
+                                                  dist=dist, below=below, fresh=fresh,
+                                                  strength=strength, stars=stars, scol=scol))
+
+                    supply_zones.sort(key=lambda x: abs(x["dist"]))
+                    demand_zones.sort(key=lambda x: abs(x["dist"]))
+
+                    nearest_sup = next((z for z in supply_zones if z["above"]), supply_zones[0] if supply_zones else None)
+                    nearest_dem = next((z for z in demand_zones if z["below"]), demand_zones[0] if demand_zones else None)
+
+                    # ── Zone Bias Card ─────────────────────────
+                    if nearest_sup and nearest_dem and spot:
+                        z_range  = nearest_sup["strike"] - nearest_dem["strike"]
+                        z_pct    = round(((spot - nearest_dem["strike"]) / z_range * 100) if z_range > 0 else 50, 1)
+                        sup_dist = abs(nearest_sup["dist"])
+                        dem_dist = abs(nearest_dem["dist"])
+                        if z_pct >= 75:
+                            z_bias = "🔴 Supply Zone ke PAAS — Resistance strong"
+                            z_col  = "#ff5252"; z_bg = "#ff525215"
+                            z_desc = f"Spot supply zone se sirf {sup_dist:.0f} pts door — sellers active ho sakte hain"
+                        elif z_pct <= 25:
+                            z_bias = "🟢 Demand Zone ke PAAS — Support strong"
+                            z_col  = "#00e676"; z_bg = "#00e67615"
+                            z_desc = f"Spot demand zone se sirf {dem_dist:.0f} pts door — buyers active ho sakte hain"
                         else:
-                            zone_bias = "⚪ MIDDLE ZONE — Wait karo"
-                            zone_col  = "#ffd600"; zone_bg = "#ffd60015"
-                            zone_desc = f"Spot zones ke beech mein — {spot_in_pct:.0f}% position in range"
+                            z_bias = "⚪ MIDDLE ZONE — Wait karo"
+                            z_col  = "#ffd600"; z_bg = "#ffd60015"
+                            z_desc = f"Spot zones ke beech mein — {z_pct:.0f}% position in range"
 
-                        st.markdown(f"""
-                        <div style="background:{zone_bg};border:1.5px solid {zone_col};border-radius:12px;padding:12px 18px;margin-bottom:12px">
-                          <div style="font-size:17px;font-weight:800;color:{zone_col}">{zone_bias}</div>
-                          <div style="font-size:11px;color:#90b8d8;margin-top:4px">{zone_desc}</div>
+                        st.markdown(f"""<div style="background:{z_bg};border:1.5px solid {z_col};border-radius:12px;padding:12px 18px;margin-bottom:12px">
+                          <div style="font-size:17px;font-weight:800;color:{z_col}">{z_bias}</div>
+                          <div style="font-size:11px;color:#90b8d8;margin-top:4px">{z_desc}</div>
                           <div style="margin-top:10px;background:#0a1020;border-radius:6px;height:10px;position:relative;overflow:hidden">
                             <div style="position:absolute;left:0;top:0;height:100%;width:100%;background:linear-gradient(90deg,#00e676,#ffd600,#ff5252);opacity:0.3;border-radius:6px"></div>
-                            <div style="position:absolute;left:{spot_in_pct}%;top:-2px;width:4px;height:14px;background:#fff;border-radius:2px;transform:translateX(-50%)"></div>
+                            <div style="position:absolute;left:{z_pct}%;top:-2px;width:4px;height:14px;background:#fff;border-radius:2px;transform:translateX(-50%)"></div>
                           </div>
-                          <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px">
-                            <span style="color:#00e676">Demand {nearest_demand['strike']:,}</span>
-                            <span style="color:#fff">Spot {spot:,.0f} ({spot_in_pct}%)</span>
-                            <span style="color:#ff5252">Supply {nearest_supply['strike']:,}</span>
+                          <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:4px">
+                            <span style="color:#00e676">Demand {nearest_dem['strike']:,}</span>
+                            <span style="color:#fff">Spot {spot:,.0f} ({z_pct}%)</span>
+                            <span style="color:#ff5252">Supply {nearest_sup['strike']:,}</span>
                           </div>
                         </div>""", unsafe_allow_html=True)
 
-                    # Two column layout — Supply left, Demand right
+                    # ── Two columns ───────────────────────────
                     sdcol1, sdcol2 = st.columns(2)
 
-                    # ── SUPPLY ZONES (Left) ───────────────────
+                    def _zone_card(z, zone_type):
+                        is_sup   = zone_type == "supply"
+                        z_col    = "#ff5252" if is_sup else "#00e676"
+                        oi_label = "Call OI" if is_sup else "Put OI"
+                        oi_color = "#ff8888" if is_sup else "#88ff88"
+                        bar_bg   = "linear-gradient(90deg,#ff5252,#ff2222)" if is_sup else "linear-gradient(90deg,#00e676,#00ff88)"
+                        is_near  = (nearest_sup and z["strike"] == nearest_sup["strike"] and is_sup) or \
+                                   (nearest_dem and z["strike"] == nearest_dem["strike"] and not is_sup)
+                        border   = f"border:1.5px solid {z_col}60;" if is_near else f"border:0.5px solid {z_col}30;"
+                        near_tag = f'<span style="background:{z_col}30;color:{z_col};font-size:9px;padding:1px 6px;border-radius:3px;margin-left:4px">NEAREST</span>' if is_near else ""
+                        fresh_tag= '<span style="background:#ffd60020;color:#ffd600;font-size:9px;padding:1px 6px;border-radius:3px;margin-left:4px">🔥 FRESH</span>' if z["fresh"] else ""
+                        if is_sup:
+                            dist_txt = f"▲ {abs(z['dist']):.0f} pts above" if z["above"] else f"⚠️ {abs(z['dist']):.0f} pts BELOW!"
+                            dist_col = "#6495b8" if z["above"] else "#ff8c00"
+                            chg_txt  = f'+{_fmt_oi(z["chg"])} NEW' if z["fresh"] and z["chg"] > 0 else "stable"
+                            chg_col  = "#ff4444" if z["fresh"] else "#6495b8"
+                        else:
+                            dist_txt = f"▼ {abs(z['dist']):.0f} pts below" if z["below"] else f"⚠️ {abs(z['dist']):.0f} pts ABOVE!"
+                            dist_col = "#6495b8" if z["below"] else "#ff8c00"
+                            chg_txt  = f'+{_fmt_oi(z["chg"])} NEW' if z["fresh"] and z["chg"] > 0 else "stable"
+                            chg_col  = "#00ff88" if z["fresh"] else "#6495b8"
+
+                        bar_w = min(int(z["pct"]), 100)
+                        return f"""<div style="background:#0d1117;{border}border-radius:8px;padding:10px 12px;margin-bottom:7px">
+                          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                            <div>
+                              <span style="font-size:16px;font-weight:800;color:{z_col};font-family:'JetBrains Mono',monospace">{z['strike']:,}</span>
+                              {near_tag}{fresh_tag}
+                            </div>
+                            <span style="font-size:12px;color:{z['scol']};font-weight:700">{z['stars']} {z['strength']}</span>
+                          </div>
+                          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px">
+                            <span style="color:#90b8d8">{oi_label}: <b style="color:{oi_color}">{_fmt_oi(z['oi'])}</b></span>
+                            <span style="color:{chg_col}">{chg_txt}</span>
+                            <span style="color:{dist_col}">{dist_txt}</span>
+                          </div>
+                          <div style="background:#0a1020;border-radius:3px;height:4px;overflow:hidden">
+                            <div style="width:{bar_w}%;background:{bar_bg};height:100%;border-radius:3px"></div>
+                          </div>
+                        </div>"""
+
                     with sdcol1:
-                        st.markdown("""<div style="font-size:11px;font-weight:700;color:#ff5252;text-transform:uppercase;
-                            letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:#ff525215;
-                            border-radius:6px;border-left:3px solid #ff5252">
-                            🔴 SUPPLY ZONES (Resistance / Selling Wall)</div>""", unsafe_allow_html=True)
+                        st.markdown('<div style="font-size:11px;font-weight:700;color:#ff5252;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:#ff525215;border-radius:6px;border-left:3px solid #ff5252">🔴 SUPPLY ZONES (Resistance / Selling Wall)</div>', unsafe_allow_html=True)
+                        for z in supply_zones[:5]:
+                            st.markdown(_zone_card(z, "supply"), unsafe_allow_html=True)
 
-                        for z in supply_z[:5]:
-                            is_nearest = nearest_supply and z["strike"] == nearest_supply["strike"]
-                            fresh_tag  = '<span style="background:#ff222220;color:#ff4444;font-size:9px;padding:1px 6px;border-radius:3px;margin-left:6px">🔥 FRESH</span>' if z["fresh"] else ""
-                            nearest_tag = '<span style="background:#ff525240;color:#ff8888;font-size:9px;padding:1px 6px;border-radius:3px;margin-left:4px">NEAREST</span>' if is_nearest else ""
-                            above_tag  = f'<span style="font-size:10px;color:#6495b8">▲ {abs(z["dist"]):.0f} pts above</span>' if z["above"] else f'<span style="font-size:10px;color:#ff8c00">▼ {abs(z["dist"]):.0f} pts BELOW spot!</span>'
-                            border_style = "border:1.5px solid #ff522260;" if is_nearest else "border:0.5px solid #ff525230;"
-
-                            def fmt_oi(v):
-                                if v >= 10000000: return f"{v/10000000:.1f}Cr"
-                                elif v >= 100000: return f"{v/100000:.1f}L"
-                                elif v >= 1000:   return f"{v/1000:.0f}K"
-                                return str(v)
-
-                            oi_bar_w = min(int(z["oi_pct"]), 100)
-                            st.markdown(f"""
-                            <div style="background:#0d1117;{border_style}border-radius:8px;padding:10px 12px;margin-bottom:7px">
-                              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-                                <div>
-                                  <span style="font-size:16px;font-weight:800;color:#ff5252;font-family:'JetBrains Mono',monospace">{z['strike']:,}</span>
-                                  {fresh_tag}{nearest_tag}
-                                </div>
-                                <div style="text-align:right">
-                                  <span style="font-size:13px;color:{z['str_col']};font-weight:700">{z['str_stars']} {z['strength']}</span>
-                                </div>
-                              </div>
-                              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px">
-                                <span style="color:#90b8d8">Call OI: <b style="color:#ff8888">{fmt_oi(z['oi'])}</b></span>
-                                <span>{'<span style="color:#ff4444">+' + fmt_oi(abs(z['oi_chg'])) + ' NEW</span>' if z['fresh'] and z['oi_chg']>0 else '<span style="color:#6495b8">stable</span>'}</span>
-                                <span>{above_tag}</span>
-                              </div>
-                              <div style="background:#0a1020;border-radius:3px;height:4px;overflow:hidden">
-                                <div style="width:{oi_bar_w}%;background:linear-gradient(90deg,#ff5252,#ff2222);height:100%;border-radius:3px"></div>
-                              </div>
-                            </div>""", unsafe_allow_html=True)
-
-                    # ── DEMAND ZONES (Right) ──────────────────
                     with sdcol2:
-                        st.markdown("""<div style="font-size:11px;font-weight:700;color:#00e676;text-transform:uppercase;
-                            letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:#00e67615;
-                            border-radius:6px;border-left:3px solid #00e676">
-                            🟢 DEMAND ZONES (Support / Buying Wall)</div>""", unsafe_allow_html=True)
+                        st.markdown('<div style="font-size:11px;font-weight:700;color:#00e676;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:#00e67615;border-radius:6px;border-left:3px solid #00e676">🟢 DEMAND ZONES (Support / Buying Wall)</div>', unsafe_allow_html=True)
+                        for z in demand_zones[:5]:
+                            st.markdown(_zone_card(z, "demand"), unsafe_allow_html=True)
 
-                        for z in demand_z[:5]:
-                            is_nearest = nearest_demand and z["strike"] == nearest_demand["strike"]
-                            fresh_tag  = '<span style="background:#00ff8820;color:#00ff88;font-size:9px;padding:1px 6px;border-radius:3px;margin-left:6px">🔥 FRESH</span>' if z["fresh"] else ""
-                            nearest_tag = '<span style="background:#00e67640;color:#88ffaa;font-size:9px;padding:1px 6px;border-radius:3px;margin-left:4px">NEAREST</span>' if is_nearest else ""
-                            below_tag  = f'<span style="font-size:10px;color:#6495b8">▼ {abs(z["dist"]):.0f} pts below</span>' if z["below"] else f'<span style="font-size:10px;color:#ff8c00">▲ {abs(z["dist"]):.0f} pts ABOVE spot!</span>'
-                            border_style = "border:1.5px solid #00e67660;" if is_nearest else "border:0.5px solid #00e67630;"
-                            oi_bar_w = min(int(z["oi_pct"]), 100)
-
-                            st.markdown(f"""
-                            <div style="background:#0d1117;{border_style}border-radius:8px;padding:10px 12px;margin-bottom:7px">
-                              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-                                <div>
-                                  <span style="font-size:16px;font-weight:800;color:#00e676;font-family:'JetBrains Mono',monospace">{z['strike']:,}</span>
-                                  {fresh_tag}{nearest_tag}
-                                </div>
-                                <div style="text-align:right">
-                                  <span style="font-size:13px;color:{z['str_col']};font-weight:700">{z['str_stars']} {z['strength']}</span>
-                                </div>
-                              </div>
-                              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px">
-                                <span style="color:#90b8d8">Put OI: <b style="color:#88ff88">{fmt_oi(z['oi'])}</b></span>
-                                <span>{'<span style="color:#00ff88">+' + fmt_oi(abs(z['oi_chg'])) + ' NEW</span>' if z['fresh'] and z['oi_chg']>0 else '<span style="color:#6495b8">stable</span>'}</span>
-                                <span>{below_tag}</span>
-                              </div>
-                              <div style="background:#0a1020;border-radius:3px;height:4px;overflow:hidden">
-                                <div style="width:{oi_bar_w}%;background:linear-gradient(90deg,#00e676,#00ff88);height:100%;border-radius:3px"></div>
-                              </div>
-                            </div>""", unsafe_allow_html=True)
-
-                    # ── Zone Summary Table ────────────────────
+                    # ── Summary Table ──────────────────────────
                     st.markdown("---")
-                    st.markdown('<div style="font-size:11px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📋 All Zones Summary</div>', unsafe_allow_html=True)
-
-                    zone_rows = ""
-                    # Merge supply + demand sorted by strike descending
-                    all_zones = []
-                    for z in supply_z:
-                        all_zones.append(("SUPPLY", z))
-                    for z in demand_z:
-                        all_zones.append(("DEMAND", z))
+                    all_zones = [("supply", z) for z in supply_zones] + [("demand", z) for z in demand_zones]
                     all_zones.sort(key=lambda x: x[1]["strike"], reverse=True)
 
-                    for zone_type, z in all_zones:
-                        is_sup  = zone_type == "SUPPLY"
+                    rows_html = ""
+                    for zt, z in all_zones:
+                        is_sup  = zt == "supply"
                         z_col   = "#ff5252" if is_sup else "#00e676"
-                        z_bg    = "#ff525210" if is_sup else "#00e67610"
                         z_label = "🔴 Supply" if is_sup else "🟢 Demand"
-                        oi_key  = "Call OI" if is_sup else "Put OI"
-                        dist_val= z["dist"]
-                        dist_str= f"▲ +{dist_val:.0f}" if (is_sup and dist_val > 0) else f"▼ -{abs(dist_val):.0f}" if not is_sup else f"({dist_val:.0f})"
-                        dist_col= "#6495b8"
-                        is_spot_zone = abs(dist_val) < 50
-                        row_bg  = f"background:{z_bg};" if is_spot_zone else ""
-                        fresh_indicator = "🔥" if z["fresh"] else "  "
-
-                        zone_rows += f"""<tr style="{row_bg}border-bottom:1px solid rgba(29,78,216,0.08)">
-                          <td style="padding:6px 10px;color:{z_col};font-weight:700;font-size:12px">{z['strike']:,}</td>
-                          <td style="padding:6px 10px;font-size:11px">{z_label}</td>
-                          <td style="padding:6px 10px;color:{z['str_col']};font-size:11px;font-weight:600">{z['str_stars']} {z['strength']}</td>
-                          <td style="padding:6px 10px;color:#90b8d8;font-size:11px;font-family:'JetBrains Mono',monospace">{fmt_oi(z['oi'])}</td>
-                          <td style="padding:6px 10px;color:{'#00ff88' if z['fresh'] else '#6495b8'};font-size:11px">{fresh_indicator} {'Fresh' if z['fresh'] else 'Stable'}</td>
-                          <td style="padding:6px 10px;color:{dist_col};font-size:11px">{dist_str} pts</td>
+                        dist_v  = z["dist"]
+                        dist_s  = f"▲ +{dist_v:.0f}" if (is_sup and z["above"]) else (f"▼ -{abs(dist_v):.0f}" if (not is_sup and z["below"]) else f"({dist_v:.0f})")
+                        near_bg = "background:rgba(255,214,0,0.05);" if abs(dist_v) < 100 else ""
+                        rows_html += f"""<tr style="{near_bg}border-bottom:1px solid rgba(29,78,216,0.08)">
+                          <td style="padding:6px 10px;color:{z_col};font-weight:700;font-size:12px;font-family:'JetBrains Mono',monospace">{z['strike']:,}</td>
+                          <td style="padding:6px 10px;font-size:11px;color:{z_col}">{z_label}</td>
+                          <td style="padding:6px 10px;color:{z['scol']};font-size:11px;font-weight:600">{z['stars']} {z['strength']}</td>
+                          <td style="padding:6px 10px;color:#90b8d8;font-size:11px">{_fmt_oi(z['oi'])}</td>
+                          <td style="padding:6px 10px;color:{'#ffd600' if z['fresh'] else '#6495b8'};font-size:11px">{'🔥 Fresh' if z['fresh'] else 'Stable'}</td>
+                          <td style="padding:6px 10px;color:#6495b8;font-size:11px">{dist_s} pts</td>
                         </tr>"""
 
-                    st.markdown(f"""
-                    <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2)">
+                    st.markdown(f"""<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2)">
                     <table style="width:100%;border-collapse:collapse;background:#060e1a;font-family:'JetBrains Mono',monospace">
                       <thead><tr style="background:rgba(29,78,216,0.15);border-bottom:1px solid rgba(29,78,216,0.3)">
                         <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase">Strike</th>
-                        <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase">Zone Type</th>
+                        <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase">Zone</th>
                         <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase">Strength</th>
                         <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase">OI</th>
                         <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase">Status</th>
                         <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase">Distance</th>
                       </tr></thead>
-                      <tbody>{zone_rows}</tbody>
+                      <tbody>{rows_html}</tbody>
                     </table></div>
-
                     <div style="background:#0f1e35;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:11px;color:#6495b8;line-height:1.9">
-                      <b style="color:#90b8d8">Zone Rules:</b><br>
-                      🔴 <b style="color:#ff5252">Supply Zone</b> = Jahan Call writers ne bada position liya — price yahan aake girne ki zyada chance &nbsp;|&nbsp;
-                      🟢 <b style="color:#00e676">Demand Zone</b> = Jahan Put writers ne bada position liya — price yahan se bounce karne ki zyada chance<br>
-                      🔥 <b style="color:#ffd600">FRESH</b> = Naya OI add ho raha hai — zone aur strong ho raha hai &nbsp;|&nbsp;
-                      ★★★ <b>STRONG</b> = Max OI ka 80%+ &nbsp;|&nbsp; ★★☆ <b>MODERATE</b> = 50-80% &nbsp;|&nbsp; ★☆☆ <b>WEAK</b> = 50% se kam<br>
-                      <b style="color:#ffd600">Pro Tip:</b> STRONG + FRESH zone = Institutional players ne abhi position add kiya = Sabse reliable zone!
+                      <b style="color:#90b8d8">Zone Rules:</b>
+                      🔴 Supply = Call writers ka wall — price yahan se girne ki chance |
+                      🟢 Demand = Put writers ka wall — price yahan se bounce ki chance |
+                      🔥 Fresh = Naya OI add ho raha hai — zone aur strong |
+                      ★★★ = Max OI ka 80%+ | Pro Tip: STRONG + FRESH = Institutional position — sabse reliable!
                     </div>""", unsafe_allow_html=True)
 
                 except Exception as _sd_e:
