@@ -2538,110 +2538,53 @@ for tab, instrument, name, spot in [
                       <span style="color:#6495b8;font-size:11px">{active_label}</span>
                     </div>""", unsafe_allow_html=True)
 
-                # ── Chart toggle: OI vs OI Change ─────────────
-                chart_mode = st.radio(
-                    "📊 Chart Mode:",
-                    ["OI (Total)", "OI Change (Increase/Decrease)"],
-                    horizontal=True,
-                    key=f"chart_mode_{name}"
-                )
+                # ── Top 3 OI Highlights ───────────────────────
+                top3_call = df_d.nlargest(3, "Call OI")["Strike"].tolist()
+                top3_put  = df_d.nlargest(3, "Put OI")["Strike"].tolist()
+                call_colors = ["rgba(255,34,34,1.0)"  if s in top3_call else "rgba(255,82,82,0.35)"  for s in df_d["Strike"].tolist()]
+                put_colors  = ["rgba(0,255,136,1.0)"  if s in top3_put  else "rgba(0,230,118,0.35)"  for s in df_d["Strike"].tolist()]
 
-                # OI Chart
+                top_c_str = " | ".join([str(int(s)) for s in top3_call])
+                top_p_str = " | ".join([str(int(s)) for s in top3_put])
+
+                badge_html  = '<div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap">'
+                badge_html += '<div style="background:rgba(255,34,34,0.1);border:1px solid rgba(255,34,34,0.4);border-radius:8px;padding:7px 14px;font-size:12px">'
+                badge_html += '🔴 <b style="color:#ff2222">Top Call OI (Resistance):</b> <span style="color:#ff8888;font-family:monospace;font-weight:700"> ' + top_c_str + '</span></div>'
+                badge_html += '<div style="background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.4);border-radius:8px;padding:7px 14px;font-size:12px">'
+                badge_html += '🟢 <b style="color:#00ff88">Top Put OI (Support):</b> <span style="color:#00e676;font-family:monospace;font-weight:700"> ' + top_p_str + '</span></div>'
+                badge_html += '</div>'
+                st.markdown(badge_html, unsafe_allow_html=True)
+
+                # OI Chart — sirf Total OI
                 fig_oi = go.Figure()
-
-                if chart_mode == "OI (Total)":
-                    # ── Original OI bars ──────────────────────
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Call OI"],
-                        name="Call OI (Resistance)",
-                        marker_color="#ff5252", marker_opacity=0.85
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Put OI"],
-                        name="Put OI (Support)",
-                        marker_color="#00e676", marker_opacity=0.85
-                    ))
-                    chart_title = f"<b>{name} OI — Big Players Position</b>"
-                    y_title = "Open Interest"
-
-                else:
-                    # ── OI Change — Increase/Decrease alag alag ──
-                    # Call OI Increase (positive change) — solid red
-                    call_inc = df_d["Call OI Change"].clip(lower=0)
-                    # Call OI Decrease (negative change) — hatched/light red
-                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
-                    # Put OI Increase (positive change) — solid green
-                    put_inc  = df_d["Put OI Change"].clip(lower=0)
-                    # Put OI Decrease (negative change) — hatched/light green
-                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
-
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_inc,
-                        name="Call OI Increase ▲",
-                        marker=dict(color="#ff5252", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Call Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_dec,
-                        name="Call OI Decrease ▼",
-                        marker=dict(color="#ff5252", opacity=0.3,
-                                    pattern=dict(shape="/", fgcolor="#ff5252", bgcolor="rgba(255,82,82,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Call Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_inc,
-                        name="Put OI Increase ▲",
-                        marker=dict(color="#00e676", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Put Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_dec,
-                        name="Put OI Decrease ▼",
-                        marker=dict(color="#00e676", opacity=0.3,
-                                    pattern=dict(shape="\\", fgcolor="#00e676", bgcolor="rgba(0,230,118,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-
-                    # Net OI change summary
-                    net_call = int(df_d["Call OI Change"].sum())
-                    net_put  = int(df_d["Put OI Change"].sum())
-                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
-                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
-                    st.markdown(f"""
-                    <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
-                      <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
-                      </div>
-                      <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
-                    y_title = "OI Change"
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"].tolist(), y=df_d["Call OI"].tolist(),
+                    name="Call OI (Resistance)", marker_color=call_colors,
+                    hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
+                ))
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"].tolist(), y=df_d["Put OI"].tolist(),
+                    name="Put OI (Support)", marker_color=put_colors,
+                    hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
+                ))
+                chart_title = "<b>" + name + " OI — Big Players Position</b>"
+                y_title     = "Open Interest"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
-                                 annotation_text=f"ATM {atm}", annotation_font_color="#ffd600")
+                                 annotation_text="ATM " + str(atm), annotation_font_color="#ffd600")
                 if spot:
                     fig_oi.add_vline(x=spot, line_width=1.5, line_dash="dot", line_color="#00bfff",
-                                     annotation_text=f"Spot {spot:,.0f}", annotation_font_color="#00bfff")
+                                     annotation_text="Spot " + str(int(spot)), annotation_font_color="#00bfff")
                 if max_pain:
                     fig_oi.add_vline(x=max_pain, line_width=2, line_dash="longdash", line_color="#ff9500",
-                                     annotation_text=f"⭐ Max Pain {max_pain}", annotation_font_color="#ff9500")
+                                     annotation_text="⭐ Max Pain " + str(max_pain), annotation_font_color="#ff9500")
                 fig_oi.update_layout(
                     title=dict(text=chart_title, font=dict(size=14, color="#90b8d8", family="Inter")),
-                    barmode="group",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="#060e1a",
-                    font=dict(color="#7aa0be", family="Inter"),
-                    height=440,
+                    barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
+                    font=dict(color="#7aa0be", family="Inter"), height=440,
                     margin=dict(l=10, r=10, t=50, b=10),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                                font=dict(size=11, color="#90b8d8"),
-                                bgcolor="rgba(0,0,0,0)"),
+                                font=dict(size=11, color="#90b8d8"), bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(title="Strike Price", gridcolor="rgba(29,78,216,0.1)", zeroline=False,
                                tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
                     yaxis=dict(title=y_title, gridcolor="rgba(29,78,216,0.1)", zeroline=False,
@@ -2649,15 +2592,6 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
-
-                # Legend explanation
-                if chart_mode == "OI Change (Increase/Decrease)":
-                    st.markdown("""<div style="display:flex;gap:16px;margin-top:4px;font-size:11px;flex-wrap:wrap">
-                      <span>🔴 <b>Solid Red</b> = Call OI Badha (Bears position add kar rahe)</span>
-                      <span>🔴 <b>Light Red</b> = Call OI Ghata (Bears exit kar rahe)</span>
-                      <span>🟢 <b>Solid Green</b> = Put OI Badha (Bulls position add kar rahe)</span>
-                      <span>🟢 <b>Light Green</b> = Put OI Ghata (Bulls exit kar rahe)</span>
-                    </div>""", unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
@@ -2757,15 +2691,59 @@ for tab, instrument, name, spot in [
                         elif "Unwind"  in val:  return "color:#ff5252"
                     return ""
 
-                st.dataframe(oi_table.style.apply(style_oi_row, axis=1)
-                             .map(color_chg, subset=["Call OI Chg","Put OI Chg","📊 Call Who","📊 Put Who"]), use_container_width=True, hide_index=True)
-                st.markdown("""<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
-                  <span style="color:#ff6666">🔴 Max Call OI = Resistance</span>
-                  <span style="color:#00e676">🟢 Max Put OI = Support</span>
-                  <span style="color:#ffd600">🟡 ATM Strike</span>
-                  <span style="color:#a78bfa">✍️ Writers = Position add kar rahe</span>
-                  <span style="color:#ff8c00">🛒 Buyers = Lete hain direction ke liye</span>
-                </div>""", unsafe_allow_html=True)
+                # ── Dark HTML OI Table ─────────────────────────
+                cols_order = ["📊 Call Who","Call Signal","Call OI Chg","Call OI","Strike","Put OI","Put OI Chg","Put Signal","📊 Put Who"]
+                hdr_html = ""
+                for c in cols_order:
+                    hdr_html += '<th style="padding:7px 9px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid rgba(29,78,216,0.25);white-space:nowrap;background:rgba(29,78,216,0.15)">' + c + '</th>'
+
+                rows_html = ""
+                for idx, trow in oi_table.iterrows():
+                    raw_r    = oi_raw.loc[idx]
+                    is_atm_r = raw_r["Strike"] == atm
+                    is_max_c = raw_r["Call OI"] == max_call_oi
+                    is_max_p = raw_r["Put OI"]  == max_put_oi
+                    row_bg   = "background:rgba(255,214,0,0.06);" if is_atm_r else (
+                               "background:#060e1a;" if idx % 2 == 0 else "background:#0a1525;")
+
+                    cells = ""
+                    for ci, col in enumerate(cols_order):
+                        val    = str(trow[col])
+                        bg_td  = ""
+                        # Max OI special background
+                        if ci == 3 and is_max_c:
+                            color = "#ffffff"; bg_td = "background:#cc0000;"; fw = "font-weight:900;"
+                        elif ci == 5 and is_max_p:
+                            color = "#ffffff"; bg_td = "background:#00aa44;"; fw = "font-weight:900;"
+                        # OI change
+                        elif val.startswith("+") and val != "+0":
+                            color = "#00e676"; fw = "font-weight:700;"
+                        elif val.startswith("-") and val != "-0":
+                            color = "#ff5252"; fw = "font-weight:700;"
+                        # Who column
+                        elif "Writers" in val: color = "#a78bfa"; fw = "font-weight:600;"
+                        elif "Buyers"  in val: color = "#ff8c00"; fw = "font-weight:600;"
+                        elif "Exit"    in val: color = "#6495b8"; fw = ""
+                        elif "Unwind"  in val: color = "#ff8c00"; fw = ""
+                        # Signal column
+                        elif "Long Build" in val:  color = "#00ff88"; fw = ""
+                        elif "Short Build" in val: color = "#ff4444"; fw = ""
+                        elif "Short Cover" in val: color = "#ffd600"; fw = ""
+                        elif val == "—":           color = "#3a5068"; fw = ""
+                        else:                      color = "#c8dff5"; fw = ""
+
+                        cells += '<td style="padding:6px 9px;color:' + color + ';' + bg_td + fw + 'font-size:11px;font-family:monospace;border-bottom:1px solid rgba(29,78,216,0.08);white-space:nowrap">' + val + '</td>'
+
+                    rows_html += '<tr style="' + row_bg + '">' + cells + '</tr>'
+
+                oi_tbl_html  = '<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2);margin-top:6px">'
+                oi_tbl_html += '<table style="width:100%;border-collapse:collapse;background:#060e1a">'
+                oi_tbl_html += '<thead><tr>' + hdr_html + '</tr></thead>'
+                oi_tbl_html += '<tbody>' + rows_html + '</tbody>'
+                oi_tbl_html += '</table></div>'
+                st.markdown(oi_tbl_html, unsafe_allow_html=True)
+
+                st.markdown('<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap"><span style="color:#ff6666">🔴 Max Call OI = Resistance</span><span style="color:#00e676">🟢 Max Put OI = Support</span><span style="color:#ffd600">🟡 ATM Strike</span><span style="color:#a78bfa">✍️ Writers = Position add</span><span style="color:#ff8c00">🛒 Buyers = Direction bet</span></div>', unsafe_allow_html=True)
 
                 # ── 7 DAYS OI HISTORY ─────────────────────────
                 st.markdown("---")
