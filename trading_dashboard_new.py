@@ -831,6 +831,83 @@ def get_ohlc(token, keys):
         print(f"[WARN] get_ohlc failed: {e}")
     return {}
 
+def fmt_oi_val(v):
+    """Format OI value — Cr/L/K"""
+    v = int(v)
+    if v >= 10000000: return str(round(v/10000000, 1)) + "Cr"
+    elif v >= 100000: return str(round(v/100000, 1)) + "L"
+    elif v >= 1000:   return str(int(v/1000)) + "K"
+    return str(v)
+
+def build_zone_card_html(z, zone_type, nearest_sup_strike, nearest_dem_strike):
+    """Build Supply/Demand zone card HTML — no nested f-strings"""
+    is_sup   = (zone_type == "supply")
+    z_col    = "#ff5252"   if is_sup else "#00e676"
+    oi_label = "Call OI"  if is_sup else "Put OI"
+    oi_color = "#ff8888"  if is_sup else "#88ff88"
+    bar_grad = "linear-gradient(90deg,#ff5252,#ff2222)" if is_sup else "linear-gradient(90deg,#00e676,#00ff88)"
+
+    is_near  = (is_sup  and nearest_sup_strike and z["strike"] == nearest_sup_strike) or \
+               (not is_sup and nearest_dem_strike and z["strike"] == nearest_dem_strike)
+
+    bdr_w    = "1.5px" if is_near else "0.5px"
+    bdr_op   = "60"    if is_near else "30"
+
+    near_tag = ""
+    if is_near:
+        near_tag = ('<span style="background:' + z_col + '30;color:' + z_col +
+                    ';font-size:9px;padding:1px 6px;border-radius:3px;margin-left:4px">NEAREST</span>')
+
+    fresh_tag = ""
+    if z["fresh"]:
+        fresh_tag = '<span style="background:#ffd60020;color:#ffd600;font-size:9px;padding:1px 6px;border-radius:3px;margin-left:4px">🔥 FRESH</span>'
+
+    # Distance text
+    dist_abs = int(abs(z["dist"]))
+    if is_sup:
+        dist_txt = ("up " + str(dist_abs) + " pts above") if z.get("above") else ("!! " + str(dist_abs) + " pts BELOW spot!")
+        dist_col = "#6495b8" if z.get("above") else "#ff8c00"
+    else:
+        dist_txt = ("dn " + str(dist_abs) + " pts below") if z.get("below") else ("!! " + str(dist_abs) + " pts ABOVE spot!")
+        dist_col = "#6495b8" if z.get("below") else "#ff8c00"
+
+    # Change text
+    chg_val = int(z.get("chg", 0))
+    if z["fresh"] and chg_val > 0:
+        chg_txt = "+" + fmt_oi_val(chg_val) + " NEW"
+        chg_col = "#ff4444" if is_sup else "#00ff88"
+    else:
+        chg_txt = "stable"
+        chg_col = "#6495b8"
+
+    strike_str = "{:,}".format(z["strike"])
+    oi_str     = fmt_oi_val(z["oi"])
+    bar_w      = str(min(int(z["pct"]), 100))
+    scol       = z["scol"]
+    stars      = z["stars"]
+    strength   = z["strength"]
+
+    # Build HTML using simple concatenation — no nested quotes issue
+    parts = []
+    parts.append('<div style="background:#0d1117;border:' + bdr_w + ' solid ' + z_col + bdr_op + ';border-radius:8px;padding:10px 12px;margin-bottom:7px">')
+    parts.append('<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">')
+    parts.append('<div>')
+    parts.append('<span style="font-size:16px;font-weight:800;color:' + z_col + ';font-family:monospace">' + strike_str + '</span>')
+    parts.append(near_tag + fresh_tag)
+    parts.append('</div>')
+    parts.append('<span style="font-size:12px;color:' + scol + ';font-weight:700">' + stars + ' ' + strength + '</span>')
+    parts.append('</div>')
+    parts.append('<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px">')
+    parts.append('<span style="color:#90b8d8">' + oi_label + ': <b style="color:' + oi_color + '">' + oi_str + '</b></span>')
+    parts.append('<span style="color:' + chg_col + '">' + chg_txt + '</span>')
+    parts.append('<span style="color:' + dist_col + '">' + dist_txt + '</span>')
+    parts.append('</div>')
+    parts.append('<div style="background:#0a1020;border-radius:3px;height:4px;overflow:hidden">')
+    parts.append('<div style="width:' + bar_w + '%;background:' + bar_grad + ';height:100%;border-radius:3px"></div>')
+    parts.append('</div>')
+    parts.append('</div>')
+    return "".join(parts)
+
 def get_intraday_candles(token, instrument, interval="30minute"):
     """Intraday candles fetch karo — VWAP aur ATR ke liye"""
     try:
@@ -1532,20 +1609,15 @@ with hcol1:
         <div class="spot-label header-glow">⚡ TRADEX DIIGAMBAR &nbsp;·&nbsp; LIVE TERMINAL</div>
         <div style="font-size:10px;color:#1d4ed8;letter-spacing:2px;font-weight:700;background:rgba(29,78,216,0.1);padding:3px 8px;border-radius:20px;border:1px solid rgba(29,78,216,0.3)">PRO</div>
       </div>
-      <div style="display:flex;align-items:center;gap:20px;margin-top:6px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:28px;margin-top:6px">
         <div>
-          <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">NIFTY 50</div>
-          <div class="spot-number" id="nifty-spot" style="font-size:44px;font-weight:900">⏳</div>
+          <div style="font-size:15px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">NIFTY 50</div>
+          <div class="spot-number" id="nifty-spot" style="font-size:52px;font-weight:900">—</div>
         </div>
-        <div style="width:1px;height:48px;background:linear-gradient(180deg,transparent,rgba(29,78,216,0.5),transparent);margin:0 2px"></div>
+        <div style="width:1px;height:52px;background:linear-gradient(180deg,transparent,rgba(29,78,216,0.5),transparent);margin:0 4px"></div>
         <div>
-          <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BANK NIFTY</div>
-          <div class="spot-number" id="bn-spot" style="font-size:32px;font-weight:900">⏳</div>
-        </div>
-        <div style="width:1px;height:48px;background:linear-gradient(180deg,transparent,rgba(255,170,50,0.4),transparent);margin:0 2px"></div>
-        <div>
-          <div style="font-size:13px;color:#ffb347;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BSE SENSEX</div>
-          <div class="spot-number" id="sx-spot" style="font-size:32px;font-weight:900;color:#ffe0a0">⏳</div>
+          <div style="font-size:15px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BANK NIFTY</div>
+          <div class="spot-number" id="bn-spot" style="font-size:36px;font-weight:900">—</div>
         </div>
       </div>
     </div>""", unsafe_allow_html=True)
@@ -2466,110 +2538,53 @@ for tab, instrument, name, spot in [
                       <span style="color:#6495b8;font-size:11px">{active_label}</span>
                     </div>""", unsafe_allow_html=True)
 
-                # ── Chart toggle: OI vs OI Change ─────────────
-                chart_mode = st.radio(
-                    "📊 Chart Mode:",
-                    ["OI (Total)", "OI Change (Increase/Decrease)"],
-                    horizontal=True,
-                    key=f"chart_mode_{name}"
-                )
+                # ── Top 3 OI Highlights ───────────────────────
+                top3_call = df_d.nlargest(3, "Call OI")["Strike"].tolist()
+                top3_put  = df_d.nlargest(3, "Put OI")["Strike"].tolist()
+                call_colors = ["rgba(255,34,34,1.0)"  if s in top3_call else "rgba(255,82,82,0.35)"  for s in df_d["Strike"].tolist()]
+                put_colors  = ["rgba(0,255,136,1.0)"  if s in top3_put  else "rgba(0,230,118,0.35)"  for s in df_d["Strike"].tolist()]
 
-                # OI Chart
+                top_c_str = " | ".join([str(int(s)) for s in top3_call])
+                top_p_str = " | ".join([str(int(s)) for s in top3_put])
+
+                badge_html  = '<div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap">'
+                badge_html += '<div style="background:rgba(255,34,34,0.1);border:1px solid rgba(255,34,34,0.4);border-radius:8px;padding:7px 14px;font-size:12px">'
+                badge_html += '🔴 <b style="color:#ff2222">Top Call OI (Resistance):</b> <span style="color:#ff8888;font-family:monospace;font-weight:700"> ' + top_c_str + '</span></div>'
+                badge_html += '<div style="background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.4);border-radius:8px;padding:7px 14px;font-size:12px">'
+                badge_html += '🟢 <b style="color:#00ff88">Top Put OI (Support):</b> <span style="color:#00e676;font-family:monospace;font-weight:700"> ' + top_p_str + '</span></div>'
+                badge_html += '</div>'
+                st.markdown(badge_html, unsafe_allow_html=True)
+
+                # OI Chart — sirf Total OI
                 fig_oi = go.Figure()
-
-                if chart_mode == "OI (Total)":
-                    # ── Original OI bars ──────────────────────
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Call OI"],
-                        name="Call OI (Resistance)",
-                        marker_color="#ff5252", marker_opacity=0.85
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=df_d["Put OI"],
-                        name="Put OI (Support)",
-                        marker_color="#00e676", marker_opacity=0.85
-                    ))
-                    chart_title = f"<b>{name} OI — Big Players Position</b>"
-                    y_title = "Open Interest"
-
-                else:
-                    # ── OI Change — Increase/Decrease alag alag ──
-                    # Call OI Increase (positive change) — solid red
-                    call_inc = df_d["Call OI Change"].clip(lower=0)
-                    # Call OI Decrease (negative change) — hatched/light red
-                    call_dec = df_d["Call OI Change"].clip(upper=0).abs()
-                    # Put OI Increase (positive change) — solid green
-                    put_inc  = df_d["Put OI Change"].clip(lower=0)
-                    # Put OI Decrease (negative change) — hatched/light green
-                    put_dec  = df_d["Put OI Change"].clip(upper=0).abs()
-
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_inc,
-                        name="Call OI Increase ▲",
-                        marker=dict(color="#ff5252", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Call Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=call_dec,
-                        name="Call OI Decrease ▼",
-                        marker=dict(color="#ff5252", opacity=0.3,
-                                    pattern=dict(shape="/", fgcolor="#ff5252", bgcolor="rgba(255,82,82,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Call Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_inc,
-                        name="Put OI Increase ▲",
-                        marker=dict(color="#00e676", opacity=0.9),
-                        hovertemplate="Strike: %{x}<br>Put Increase: +%{y:,.0f}<extra></extra>"
-                    ))
-                    fig_oi.add_trace(go.Bar(
-                        x=df_d["Strike"], y=put_dec,
-                        name="Put OI Decrease ▼",
-                        marker=dict(color="#00e676", opacity=0.3,
-                                    pattern=dict(shape="\\", fgcolor="#00e676", bgcolor="rgba(0,230,118,0.1)")),
-                        hovertemplate="Strike: %{x}<br>Put Decrease: -%{y:,.0f}<extra></extra>"
-                    ))
-
-                    # Net OI change summary
-                    net_call = int(df_d["Call OI Change"].sum())
-                    net_put  = int(df_d["Put OI Change"].sum())
-                    net_col_c = "#ff5252" if net_call >= 0 else "#00e676"
-                    net_col_p = "#00e676" if net_put  >= 0 else "#ff5252"
-                    st.markdown(f"""
-                    <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
-                      <div style="background:#ff525215;border:1px solid #ff525240;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🔴 Call OI Net Change: <b style="color:{net_col_c}">{"+" if net_call>=0 else ""}{net_call:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bears active" if net_call>0 else "Bears covering"}</span>
-                      </div>
-                      <div style="background:#00e67615;border:1px solid #00e67640;border-radius:8px;padding:8px 16px;font-size:13px">
-                        🟢 Put OI Net Change: <b style="color:{net_col_p}">{"+" if net_put>=0 else ""}{net_put:,}</b>
-                        <span style="color:#6495b8;font-size:11px;margin-left:8px">{"Bulls active" if net_put>0 else "Bulls covering"}</span>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    chart_title = f"<b>{name} OI Change — Kitna Badha / Ghata</b>"
-                    y_title = "OI Change"
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"].tolist(), y=df_d["Call OI"].tolist(),
+                    name="Call OI (Resistance)", marker_color=call_colors,
+                    hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
+                ))
+                fig_oi.add_trace(go.Bar(
+                    x=df_d["Strike"].tolist(), y=df_d["Put OI"].tolist(),
+                    name="Put OI (Support)", marker_color=put_colors,
+                    hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
+                ))
+                chart_title = "<b>" + name + " OI — Big Players Position</b>"
+                y_title     = "Open Interest"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
-                                 annotation_text=f"ATM {atm}", annotation_font_color="#ffd600")
+                                 annotation_text="ATM " + str(atm), annotation_font_color="#ffd600")
                 if spot:
                     fig_oi.add_vline(x=spot, line_width=1.5, line_dash="dot", line_color="#00bfff",
-                                     annotation_text=f"Spot {spot:,.0f}", annotation_font_color="#00bfff")
+                                     annotation_text="Spot " + str(int(spot)), annotation_font_color="#00bfff")
                 if max_pain:
                     fig_oi.add_vline(x=max_pain, line_width=2, line_dash="longdash", line_color="#ff9500",
-                                     annotation_text=f"⭐ Max Pain {max_pain}", annotation_font_color="#ff9500")
+                                     annotation_text="⭐ Max Pain " + str(max_pain), annotation_font_color="#ff9500")
                 fig_oi.update_layout(
                     title=dict(text=chart_title, font=dict(size=14, color="#90b8d8", family="Inter")),
-                    barmode="group",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="#060e1a",
-                    font=dict(color="#7aa0be", family="Inter"),
-                    height=440,
+                    barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
+                    font=dict(color="#7aa0be", family="Inter"), height=440,
                     margin=dict(l=10, r=10, t=50, b=10),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                                font=dict(size=11, color="#90b8d8"),
-                                bgcolor="rgba(0,0,0,0)"),
+                                font=dict(size=11, color="#90b8d8"), bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(title="Strike Price", gridcolor="rgba(29,78,216,0.1)", zeroline=False,
                                tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
                     yaxis=dict(title=y_title, gridcolor="rgba(29,78,216,0.1)", zeroline=False,
@@ -2577,15 +2592,6 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
-
-                # Legend explanation
-                if chart_mode == "OI Change (Increase/Decrease)":
-                    st.markdown("""<div style="display:flex;gap:16px;margin-top:4px;font-size:11px;flex-wrap:wrap">
-                      <span>🔴 <b>Solid Red</b> = Call OI Badha (Bears position add kar rahe)</span>
-                      <span>🔴 <b>Light Red</b> = Call OI Ghata (Bears exit kar rahe)</span>
-                      <span>🟢 <b>Solid Green</b> = Put OI Badha (Bulls position add kar rahe)</span>
-                      <span>🟢 <b>Light Green</b> = Put OI Ghata (Bulls exit kar rahe)</span>
-                    </div>""", unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
@@ -2685,15 +2691,59 @@ for tab, instrument, name, spot in [
                         elif "Unwind"  in val:  return "color:#ff5252"
                     return ""
 
-                st.dataframe(oi_table.style.apply(style_oi_row, axis=1)
-                             .map(color_chg, subset=["Call OI Chg","Put OI Chg","📊 Call Who","📊 Put Who"]), use_container_width=True, hide_index=True)
-                st.markdown("""<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap">
-                  <span style="color:#ff6666">🔴 Max Call OI = Resistance</span>
-                  <span style="color:#00e676">🟢 Max Put OI = Support</span>
-                  <span style="color:#ffd600">🟡 ATM Strike</span>
-                  <span style="color:#a78bfa">✍️ Writers = Position add kar rahe</span>
-                  <span style="color:#ff8c00">🛒 Buyers = Lete hain direction ke liye</span>
-                </div>""", unsafe_allow_html=True)
+                # ── Dark HTML OI Table ─────────────────────────
+                cols_order = ["📊 Call Who","Call Signal","Call OI Chg","Call OI","Strike","Put OI","Put OI Chg","Put Signal","📊 Put Who"]
+                hdr_html = ""
+                for c in cols_order:
+                    hdr_html += '<th style="padding:7px 9px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid rgba(29,78,216,0.25);white-space:nowrap;background:rgba(29,78,216,0.15)">' + c + '</th>'
+
+                rows_html = ""
+                for idx, trow in oi_table.iterrows():
+                    raw_r    = oi_raw.loc[idx]
+                    is_atm_r = raw_r["Strike"] == atm
+                    is_max_c = raw_r["Call OI"] == max_call_oi
+                    is_max_p = raw_r["Put OI"]  == max_put_oi
+                    row_bg   = "background:rgba(255,214,0,0.06);" if is_atm_r else (
+                               "background:#060e1a;" if idx % 2 == 0 else "background:#0a1525;")
+
+                    cells = ""
+                    for ci, col in enumerate(cols_order):
+                        val    = str(trow[col])
+                        bg_td  = ""
+                        # Max OI special background
+                        if ci == 3 and is_max_c:
+                            color = "#ffffff"; bg_td = "background:#cc0000;"; fw = "font-weight:900;"
+                        elif ci == 5 and is_max_p:
+                            color = "#ffffff"; bg_td = "background:#00aa44;"; fw = "font-weight:900;"
+                        # OI change
+                        elif val.startswith("+") and val != "+0":
+                            color = "#00e676"; fw = "font-weight:700;"
+                        elif val.startswith("-") and val != "-0":
+                            color = "#ff5252"; fw = "font-weight:700;"
+                        # Who column
+                        elif "Writers" in val: color = "#a78bfa"; fw = "font-weight:600;"
+                        elif "Buyers"  in val: color = "#ff8c00"; fw = "font-weight:600;"
+                        elif "Exit"    in val: color = "#6495b8"; fw = ""
+                        elif "Unwind"  in val: color = "#ff8c00"; fw = ""
+                        # Signal column
+                        elif "Long Build" in val:  color = "#00ff88"; fw = ""
+                        elif "Short Build" in val: color = "#ff4444"; fw = ""
+                        elif "Short Cover" in val: color = "#ffd600"; fw = ""
+                        elif val == "—":           color = "#3a5068"; fw = ""
+                        else:                      color = "#c8dff5"; fw = ""
+
+                        cells += '<td style="padding:6px 9px;color:' + color + ';' + bg_td + fw + 'font-size:11px;font-family:monospace;border-bottom:1px solid rgba(29,78,216,0.08);white-space:nowrap">' + val + '</td>'
+
+                    rows_html += '<tr style="' + row_bg + '">' + cells + '</tr>'
+
+                oi_tbl_html  = '<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2);margin-top:6px">'
+                oi_tbl_html += '<table style="width:100%;border-collapse:collapse;background:#060e1a">'
+                oi_tbl_html += '<thead><tr>' + hdr_html + '</tr></thead>'
+                oi_tbl_html += '<tbody>' + rows_html + '</tbody>'
+                oi_tbl_html += '</table></div>'
+                st.markdown(oi_tbl_html, unsafe_allow_html=True)
+
+                st.markdown('<div style="display:flex;gap:16px;margin-top:6px;font-size:11px;flex-wrap:wrap"><span style="color:#ff6666">🔴 Max Call OI = Resistance</span><span style="color:#00e676">🟢 Max Put OI = Support</span><span style="color:#ffd600">🟡 ATM Strike</span><span style="color:#a78bfa">✍️ Writers = Position add</span><span style="color:#ff8c00">🛒 Buyers = Direction bet</span></div>', unsafe_allow_html=True)
 
                 # ── 7 DAYS OI HISTORY ─────────────────────────
                 st.markdown("---")
@@ -2808,8 +2858,132 @@ for tab, instrument, name, spot in [
                 else:
                     st.info("⏳ Day range data market hours mein aayega")
 
-st.markdown("---")
-st.markdown('<div class="sec-header" style="border-left:3px solid #60a5fa">🏦 FII / DII Activity</div>', unsafe_allow_html=True)
+                # ══ SUPPLY / DEMAND ZONE DETECTOR ════════════
+                st.markdown("---")
+                st.markdown('<div class="sec-header" style="border-left:3px solid #ff6b35">🏔️ Supply & Demand Zones</div>', unsafe_allow_html=True)
+
+                try:
+                    max_call = float(df_d["Call OI"].max()) if df_d["Call OI"].max() > 0 else 1
+                    max_put  = float(df_d["Put OI"].max())  if df_d["Put OI"].max()  > 0 else 1
+
+                    supply_zones = []
+                    for _, row in df_d.nlargest(5, "Call OI").iterrows():
+                        s     = int(row["Strike"])
+                        c_oi  = int(row["Call OI"])
+                        c_chg = int(row.get("Call OI Change", 0))
+                        pct   = (c_oi / max_call) * 100
+                        dist  = round(s - (spot or 0), 0)
+                        above = s > (spot or 0)
+                        fresh = c_chg > 0
+                        if pct >= 80:   st_r = "STRONG";   stars = "★★★"; scol = "#ff2222"
+                        elif pct >= 50: st_r = "MODERATE"; stars = "★★☆"; scol = "#ff8c00"
+                        else:           st_r = "WEAK";     stars = "★☆☆"; scol = "#ff9999"
+                        supply_zones.append(dict(strike=s, oi=c_oi, chg=c_chg, pct=pct,
+                                                  dist=dist, above=above, fresh=fresh,
+                                                  strength=st_r, stars=stars, scol=scol))
+
+                    demand_zones = []
+                    for _, row in df_d.nlargest(5, "Put OI").iterrows():
+                        s     = int(row["Strike"])
+                        p_oi  = int(row["Put OI"])
+                        p_chg = int(row.get("Put OI Change", 0))
+                        pct   = (p_oi / max_put) * 100
+                        dist  = round((spot or 0) - s, 0)
+                        below = s < (spot or 0)
+                        fresh = p_chg > 0
+                        if pct >= 80:   st_r = "STRONG";   stars = "★★★"; scol = "#00ff88"
+                        elif pct >= 50: st_r = "MODERATE"; stars = "★★☆"; scol = "#4ade80"
+                        else:           st_r = "WEAK";     stars = "★☆☆"; scol = "#99ffcc"
+                        demand_zones.append(dict(strike=s, oi=p_oi, chg=p_chg, pct=pct,
+                                                  dist=dist, below=below, fresh=fresh,
+                                                  strength=st_r, stars=stars, scol=scol))
+
+                    supply_zones.sort(key=lambda x: abs(x["dist"]))
+                    demand_zones.sort(key=lambda x: abs(x["dist"]))
+                    nearest_sup = next((z for z in supply_zones if z["above"]),  supply_zones[0] if supply_zones else None)
+                    nearest_dem = next((z for z in demand_zones if z["below"]),  demand_zones[0] if demand_zones else None)
+                    ns_strike   = nearest_sup["strike"] if nearest_sup else None
+                    nd_strike   = nearest_dem["strike"] if nearest_dem else None
+
+                    # Zone bias card
+                    if nearest_sup and nearest_dem and spot:
+                        z_range = nearest_sup["strike"] - nearest_dem["strike"]
+                        z_pct   = round(((spot - nearest_dem["strike"]) / z_range * 100) if z_range > 0 else 50, 1)
+                        sup_d   = int(abs(nearest_sup["dist"]))
+                        dem_d   = int(abs(nearest_dem["dist"]))
+                        if z_pct >= 75:
+                            zb = "Resistance"; zc = "#ff5252"; zbg = "#ff525215"
+                            zd = "Supply zone se " + str(sup_d) + " pts door — sellers active ho sakte"
+                        elif z_pct <= 25:
+                            zb = "Support strong"; zc = "#00e676"; zbg = "#00e67615"
+                            zd = "Demand zone se " + str(dem_d) + " pts door — buyers active ho sakte"
+                        else:
+                            zb = "MIDDLE ZONE"; zc = "#ffd600"; zbg = "#ffd60015"
+                            zd = "Spot zones ke beech — " + str(z_pct) + "% position in range"
+
+                        bias_html  = '<div style="background:' + zbg + ';border:1.5px solid ' + zc + ';border-radius:12px;padding:12px 18px;margin-bottom:12px">'
+                        bias_html += '<div style="font-size:17px;font-weight:800;color:' + zc + '">' + zb + '</div>'
+                        bias_html += '<div style="font-size:11px;color:#90b8d8;margin-top:4px">' + zd + '</div>'
+                        bias_html += '<div style="margin-top:10px;background:#0a1020;border-radius:6px;height:10px;position:relative;overflow:hidden">'
+                        bias_html += '<div style="position:absolute;left:0;top:0;height:100%;width:100%;background:linear-gradient(90deg,#00e676,#ffd600,#ff5252);opacity:0.3;border-radius:6px"></div>'
+                        bias_html += '<div style="position:absolute;left:' + str(z_pct) + '%;top:-2px;width:4px;height:14px;background:#fff;border-radius:2px;transform:translateX(-50%)"></div>'
+                        bias_html += '</div>'
+                        bias_html += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:4px">'
+                        bias_html += '<span style="color:#00e676">Demand ' + "{:,}".format(nearest_dem["strike"]) + '</span>'
+                        bias_html += '<span style="color:#fff">Spot ' + "{:,.0f}".format(spot) + ' (' + str(z_pct) + '%)</span>'
+                        bias_html += '<span style="color:#ff5252">Supply ' + "{:,}".format(nearest_sup["strike"]) + '</span>'
+                        bias_html += '</div></div>'
+                        st.markdown(bias_html, unsafe_allow_html=True)
+
+                    # Two columns
+                    zc1, zc2 = st.columns(2)
+                    with zc1:
+                        st.markdown('<div style="font-size:11px;font-weight:700;color:#ff5252;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:#ff525215;border-radius:6px;border-left:3px solid #ff5252">🔴 SUPPLY ZONES (Resistance)</div>', unsafe_allow_html=True)
+                        for z in supply_zones[:5]:
+                            st.markdown(build_zone_card_html(z, "supply", ns_strike, nd_strike), unsafe_allow_html=True)
+
+                    with zc2:
+                        st.markdown('<div style="font-size:11px;font-weight:700;color:#00e676;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:#00e67615;border-radius:6px;border-left:3px solid #00e676">🟢 DEMAND ZONES (Support)</div>', unsafe_allow_html=True)
+                        for z in demand_zones[:5]:
+                            st.markdown(build_zone_card_html(z, "demand", ns_strike, nd_strike), unsafe_allow_html=True)
+
+                    # Summary table
+                    st.markdown("---")
+                    all_z = [("supply", z) for z in supply_zones] + [("demand", z) for z in demand_zones]
+                    all_z.sort(key=lambda x: x[1]["strike"], reverse=True)
+
+                    trows = ""
+                    for zt, z in all_z:
+                        is_s  = zt == "supply"
+                        zc    = "#ff5252" if is_s else "#00e676"
+                        zlbl  = "🔴 Supply" if is_s else "🟢 Demand"
+                        dv    = int(z["dist"])
+                        ds    = ("+" + str(abs(dv))) if (is_s and z.get("above")) else ("-" + str(abs(dv)))
+                        nb    = "background:rgba(255,214,0,0.05);" if abs(dv) < 100 else ""
+                        fc    = "#ffd600" if z["fresh"] else "#6495b8"
+                        ft    = "🔥 Fresh" if z["fresh"] else "Stable"
+                        trows += '<tr style="' + nb + 'border-bottom:1px solid rgba(29,78,216,0.08)">'
+                        trows += '<td style="padding:6px 10px;color:' + zc + ';font-weight:700;font-size:12px;font-family:monospace">' + "{:,}".format(z["strike"]) + '</td>'
+                        trows += '<td style="padding:6px 10px;font-size:11px;color:' + zc + '">' + zlbl + '</td>'
+                        trows += '<td style="padding:6px 10px;color:' + z["scol"] + ';font-size:11px;font-weight:600">' + z["stars"] + ' ' + z["strength"] + '</td>'
+                        trows += '<td style="padding:6px 10px;color:#90b8d8;font-size:11px">' + fmt_oi_val(z["oi"]) + '</td>'
+                        trows += '<td style="padding:6px 10px;color:' + fc + ';font-size:11px">' + ft + '</td>'
+                        trows += '<td style="padding:6px 10px;color:#6495b8;font-size:11px">' + ds + ' pts</td>'
+                        trows += '</tr>'
+
+                    tbl_html  = '<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2)">'
+                    tbl_html += '<table style="width:100%;border-collapse:collapse;background:#060e1a;font-family:monospace">'
+                    tbl_html += '<thead><tr style="background:rgba(29,78,216,0.15);border-bottom:1px solid rgba(29,78,216,0.3)">'
+                    for hdr in ["Strike","Zone","Strength","OI","Status","Distance"]:
+                        tbl_html += '<th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase">' + hdr + '</th>'
+                    tbl_html += '</tr></thead><tbody>' + trows + '</tbody></table></div>'
+                    tbl_html += '<div style="background:#0f1e35;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:11px;color:#6495b8">'
+                    tbl_html += '🔴 Supply = Call writers ka wall | 🟢 Demand = Put writers ka floor | 🔥 Fresh = Naya OI — zone strong ho raha hai | ★★★ STRONG + 🔥 Fresh = Institutional position!'
+                    tbl_html += '</div>'
+                    st.markdown(tbl_html, unsafe_allow_html=True)
+
+                except Exception as _sd_e:
+                    st.markdown('<div style="font-size:11px;color:#6495b8;padding:8px">Supply/Demand error: ' + str(_sd_e) + '</div>', unsafe_allow_html=True)
 
 fetch_time = now_ist().strftime("%d %b %Y, %I:%M:%S %p")
 today_str  = now_ist().strftime("%d-%b-%Y")
