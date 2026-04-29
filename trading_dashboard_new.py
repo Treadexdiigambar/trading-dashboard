@@ -1603,21 +1603,27 @@ mkt_icon   = "🟢" if mkt_open else "🔴"
 # ── Header — Spot Price sabse bada ──
 hcol1, hcol2, hcol3 = st.columns([5, 5, 1])
 with hcol1:
-    st.markdown(f"""
+    _hdr_ph = st.empty()
+    _hdr_ph.markdown("""
     <div class="spot-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div class="spot-label header-glow">⚡ TRADEX DIIGAMBAR &nbsp;·&nbsp; LIVE TERMINAL</div>
         <div style="font-size:10px;color:#1d4ed8;letter-spacing:2px;font-weight:700;background:rgba(29,78,216,0.1);padding:3px 8px;border-radius:20px;border:1px solid rgba(29,78,216,0.3)">PRO</div>
       </div>
-      <div style="display:flex;align-items:center;gap:28px;margin-top:6px">
+      <div style="display:flex;align-items:center;gap:20px;margin-top:6px;flex-wrap:wrap">
         <div>
-          <div style="font-size:15px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">NIFTY 50</div>
-          <div class="spot-number" id="nifty-spot" style="font-size:52px;font-weight:900">—</div>
+          <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">NIFTY 50</div>
+          <div style="font-size:40px;font-weight:900;color:#6495b8;font-family:monospace">—</div>
         </div>
-        <div style="width:1px;height:52px;background:linear-gradient(180deg,transparent,rgba(29,78,216,0.5),transparent);margin:0 4px"></div>
+        <div style="width:1px;height:48px;background:linear-gradient(180deg,transparent,rgba(29,78,216,0.5),transparent)"></div>
         <div>
-          <div style="font-size:15px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BANK NIFTY</div>
-          <div class="spot-number" id="bn-spot" style="font-size:36px;font-weight:900">—</div>
+          <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BANK NIFTY</div>
+          <div style="font-size:32px;font-weight:900;color:#6495b8;font-family:monospace">—</div>
+        </div>
+        <div style="width:1px;height:48px;background:linear-gradient(180deg,transparent,rgba(255,170,50,0.4),transparent)"></div>
+        <div>
+          <div style="font-size:13px;color:#ffb347;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BSE SENSEX</div>
+          <div style="font-size:32px;font-weight:900;color:#6495b8;font-family:monospace">—</div>
         </div>
       </div>
     </div>""", unsafe_allow_html=True)
@@ -1900,6 +1906,34 @@ sx_arrow   = "▲" if (sx_chg is not None and sx_chg >= 0) else "▼"
 n_chg_str  = f"{n_arrow} {abs(n_chg):,.1f} ({abs(n_pct):.2f}%)"   if n_chg  is not None else ""
 bn_chg_str = f"{bn_arrow} {abs(bn_chg):,.1f} ({abs(bn_pct):.2f}%)" if bn_chg is not None else ""
 sx_chg_str = f"{sx_arrow} {abs(sx_chg):,.1f} ({abs(sx_pct):.2f}%)" if sx_chg is not None else ""
+
+# ── Update top header card with real prices ────────────────────
+_hdr_ph.markdown(f"""
+<div class="spot-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div class="spot-label header-glow">⚡ TRADEX DIIGAMBAR &nbsp;·&nbsp; LIVE TERMINAL</div>
+    <div style="font-size:10px;color:#1d4ed8;letter-spacing:2px;font-weight:700;background:rgba(29,78,216,0.1);padding:3px 8px;border-radius:20px;border:1px solid rgba(29,78,216,0.3)">PRO</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:20px;margin-top:6px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:3px">NIFTY 50</div>
+      <div style="font-size:40px;font-weight:900;color:{n_chg_col};font-family:'JetBrains Mono',monospace;line-height:1">{n_spot_display}</div>
+      <div style="font-size:12px;color:{n_chg_col};font-family:'JetBrains Mono',monospace;margin-top:2px">{n_chg_str}</div>
+    </div>
+    <div style="width:1px;height:56px;background:linear-gradient(180deg,transparent,rgba(29,78,216,0.5),transparent)"></div>
+    <div>
+      <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:3px">BANK NIFTY</div>
+      <div style="font-size:32px;font-weight:900;color:{bn_chg_col};font-family:'JetBrains Mono',monospace;line-height:1">{bn_spot_display}</div>
+      <div style="font-size:12px;color:{bn_chg_col};font-family:'JetBrains Mono',monospace;margin-top:2px">{bn_chg_str}</div>
+    </div>
+    <div style="width:1px;height:56px;background:linear-gradient(180deg,transparent,rgba(255,170,50,0.4),transparent)"></div>
+    <div>
+      <div style="font-size:13px;color:#ffb347;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:3px">BSE SENSEX</div>
+      <div style="font-size:32px;font-weight:900;color:{sx_chg_col};font-family:'JetBrains Mono',monospace;line-height:1">{sx_spot_display}</div>
+      <div style="font-size:12px;color:{sx_chg_col};font-family:'JetBrains Mono',monospace;margin-top:2px">{sx_chg_str}</div>
+    </div>
+  </div>
+</div>""", unsafe_allow_html=True)
 
 st.markdown(f"""
 <div style="background:linear-gradient(90deg,#080e1c 0%,#060a14 100%);border:1px solid rgba(29,78,216,0.2);border-radius:12px;padding:12px 22px;margin-bottom:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
