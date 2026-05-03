@@ -1603,27 +1603,21 @@ mkt_icon   = "🟢" if mkt_open else "🔴"
 # ── Header — Spot Price sabse bada ──
 hcol1, hcol2, hcol3 = st.columns([5, 5, 1])
 with hcol1:
-    _hdr_ph = st.empty()
-    _hdr_ph.markdown("""
+    st.markdown(f"""
     <div class="spot-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div class="spot-label header-glow">⚡ TRADEX DIIGAMBAR &nbsp;·&nbsp; LIVE TERMINAL</div>
         <div style="font-size:10px;color:#1d4ed8;letter-spacing:2px;font-weight:700;background:rgba(29,78,216,0.1);padding:3px 8px;border-radius:20px;border:1px solid rgba(29,78,216,0.3)">PRO</div>
       </div>
-      <div style="display:flex;align-items:center;gap:20px;margin-top:6px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:28px;margin-top:6px">
         <div>
-          <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">NIFTY 50</div>
-          <div style="font-size:40px;font-weight:900;color:#6495b8;font-family:monospace">—</div>
+          <div style="font-size:15px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">NIFTY 50</div>
+          <div class="spot-number" id="nifty-spot" style="font-size:52px;font-weight:900">—</div>
         </div>
-        <div style="width:1px;height:48px;background:linear-gradient(180deg,transparent,rgba(29,78,216,0.5),transparent)"></div>
+        <div style="width:1px;height:52px;background:linear-gradient(180deg,transparent,rgba(29,78,216,0.5),transparent);margin:0 4px"></div>
         <div>
-          <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BANK NIFTY</div>
-          <div style="font-size:32px;font-weight:900;color:#6495b8;font-family:monospace">—</div>
-        </div>
-        <div style="width:1px;height:48px;background:linear-gradient(180deg,transparent,rgba(255,170,50,0.4),transparent)"></div>
-        <div>
-          <div style="font-size:13px;color:#ffb347;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BSE SENSEX</div>
-          <div style="font-size:32px;font-weight:900;color:#6495b8;font-family:monospace">—</div>
+          <div style="font-size:15px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:4px">BANK NIFTY</div>
+          <div class="spot-number" id="bn-spot" style="font-size:36px;font-weight:900">—</div>
         </div>
       </div>
     </div>""", unsafe_allow_html=True)
@@ -1907,34 +1901,6 @@ n_chg_str  = f"{n_arrow} {abs(n_chg):,.1f} ({abs(n_pct):.2f}%)"   if n_chg  is n
 bn_chg_str = f"{bn_arrow} {abs(bn_chg):,.1f} ({abs(bn_pct):.2f}%)" if bn_chg is not None else ""
 sx_chg_str = f"{sx_arrow} {abs(sx_chg):,.1f} ({abs(sx_pct):.2f}%)" if sx_chg is not None else ""
 
-# ── Update top header card with real prices ────────────────────
-_hdr_ph.markdown(f"""
-<div class="spot-card">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-    <div class="spot-label header-glow">⚡ TRADEX DIIGAMBAR &nbsp;·&nbsp; LIVE TERMINAL</div>
-    <div style="font-size:10px;color:#1d4ed8;letter-spacing:2px;font-weight:700;background:rgba(29,78,216,0.1);padding:3px 8px;border-radius:20px;border:1px solid rgba(29,78,216,0.3)">PRO</div>
-  </div>
-  <div style="display:flex;align-items:center;gap:20px;margin-top:6px;flex-wrap:wrap">
-    <div>
-      <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:3px">NIFTY 50</div>
-      <div style="font-size:40px;font-weight:900;color:{n_chg_col};font-family:'JetBrains Mono',monospace;line-height:1">{n_spot_display}</div>
-      <div style="font-size:12px;color:{n_chg_col};font-family:'JetBrains Mono',monospace;margin-top:2px">{n_chg_str}</div>
-    </div>
-    <div style="width:1px;height:56px;background:linear-gradient(180deg,transparent,rgba(29,78,216,0.5),transparent)"></div>
-    <div>
-      <div style="font-size:13px;color:#8ab8d8;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:3px">BANK NIFTY</div>
-      <div style="font-size:32px;font-weight:900;color:{bn_chg_col};font-family:'JetBrains Mono',monospace;line-height:1">{bn_spot_display}</div>
-      <div style="font-size:12px;color:{bn_chg_col};font-family:'JetBrains Mono',monospace;margin-top:2px">{bn_chg_str}</div>
-    </div>
-    <div style="width:1px;height:56px;background:linear-gradient(180deg,transparent,rgba(255,170,50,0.4),transparent)"></div>
-    <div>
-      <div style="font-size:13px;color:#ffb347;letter-spacing:4px;font-weight:900;text-transform:uppercase;margin-bottom:3px">BSE SENSEX</div>
-      <div style="font-size:32px;font-weight:900;color:{sx_chg_col};font-family:'JetBrains Mono',monospace;line-height:1">{sx_spot_display}</div>
-      <div style="font-size:12px;color:{sx_chg_col};font-family:'JetBrains Mono',monospace;margin-top:2px">{sx_chg_str}</div>
-    </div>
-  </div>
-</div>""", unsafe_allow_html=True)
-
 st.markdown(f"""
 <div style="background:linear-gradient(90deg,#080e1c 0%,#060a14 100%);border:1px solid rgba(29,78,216,0.2);border-radius:12px;padding:12px 22px;margin-bottom:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
   <div style="display:flex;align-items:stretch;gap:28px">
@@ -2051,8 +2017,186 @@ with col4:
 st.markdown("---")
 
 # ══════════════════════════════════════════════════════════════
-# ANALYSIS TABS
+# 🎯 OVERSOLD / OVERBOUGHT MASTER SIGNAL
 # ══════════════════════════════════════════════════════════════
+st.markdown('<div class="sec-header" style="border-left:3px solid #a855f7">🎯 Oversold / Overbought Master Signal</div>', unsafe_allow_html=True)
+
+try:
+    # ── Collect signals ────────────────────────────────────────
+    signals_bull = []  # oversold = bullish signals
+    signals_bear = []  # overbought = bearish signals
+
+    # 1. VIX signal
+    try:
+        _vix = vix_val if 'vix_val' in dir() else None
+    except:
+        _vix = None
+
+    if _vix:
+        if _vix > 20:
+            signals_bull.append(("VIX", f"VIX {_vix:.1f} > 20", "Extreme fear — bounce likely", "#00e676"))
+        elif _vix > 18:
+            signals_bull.append(("VIX", f"VIX {_vix:.1f} > 18", "High fear zone — caution", "#4ade80"))
+        elif _vix < 12:
+            signals_bear.append(("VIX", f"VIX {_vix:.1f} < 12", "Too calm — correction possible", "#ff5252"))
+        elif _vix < 14:
+            signals_bear.append(("VIX", f"VIX {_vix:.1f} < 14", "Low fear — watch for reversal", "#f87171"))
+
+    # 2. PCR signal (from session state)
+    _pcr = None
+    for _k, _v in st.session_state.get("oi_sticky_data", {}).items():
+        _rows = _v.get("rows", [])
+        if _rows:
+            _tc = sum(r["call_oi"] for r in _rows)
+            _tp = sum(r["put_oi"]  for r in _rows)
+            if _tc > 0:
+                _pcr = round(_tp / _tc, 3)
+            break
+
+    if _pcr:
+        if _pcr > 1.3:
+            signals_bull.append(("PCR", f"PCR {_pcr}", "Put writers bahut active — bullish", "#00e676"))
+        elif _pcr > 1.1:
+            signals_bull.append(("PCR", f"PCR {_pcr}", "Slightly bullish PCR", "#4ade80"))
+        elif _pcr < 0.7:
+            signals_bear.append(("PCR", f"PCR {_pcr}", "Call writers bahut active — bearish", "#ff5252"))
+        elif _pcr < 0.9:
+            signals_bear.append(("PCR", f"PCR {_pcr}", "Slightly bearish PCR", "#f87171"))
+
+    # 3. OI Change signal (net call vs put change)
+    for _k, _v in st.session_state.get("oi_sticky_data", {}).items():
+        _rows = _v.get("rows", [])
+        if _rows:
+            _net_cc = sum(r["call_chg"] for r in _rows)
+            _net_pc = sum(r["put_chg"]  for r in _rows)
+            if _net_pc > 0 and _net_cc <= 0:
+                signals_bull.append(("OI", f"Put OI +{abs(_net_pc):,}", "Bulls position add kar rahe", "#00e676"))
+            elif _net_cc > 0 and _net_pc <= 0:
+                signals_bear.append(("OI", f"Call OI +{abs(_net_cc):,}", "Bears position add kar rahe", "#ff5252"))
+            elif _net_cc < 0:
+                signals_bull.append(("OI", f"Call OI {_net_cc:,}", "Bears exit ho rahe — bullish", "#4ade80"))
+            elif _net_pc < 0:
+                signals_bear.append(("OI", f"Put OI {_net_pc:,}", "Bulls exit ho rahe — bearish", "#f87171"))
+        break
+
+    # ── Overall Signal ─────────────────────────────────────────
+    bull_count = len(signals_bull)
+    bear_count = len(signals_bear)
+    total_sigs = bull_count + bear_count
+
+    if total_sigs == 0:
+        master_label = "⏳ Data collect ho raha hai"
+        master_color = "#6495b8"
+        master_bg    = "#0d1929"
+        master_bdr   = "#6495b8"
+        master_desc  = "Thodi der baad signals aayenge"
+        master_score = "—"
+    elif bull_count >= 2 and bull_count > bear_count:
+        master_label = "🟢 OVERSOLD — BUY Signal"
+        master_color = "#00e676"
+        master_bg    = "#00e67615"
+        master_bdr   = "#00e676"
+        master_desc  = str(bull_count) + " bullish signals — market bounce ke liye ready"
+        master_score = str(bull_count) + "/" + str(total_sigs) + " Bullish"
+    elif bear_count >= 2 and bear_count > bull_count:
+        master_label = "🔴 OVERBOUGHT — SELL Signal"
+        master_color = "#ff5252"
+        master_bg    = "#ff525215"
+        master_bdr   = "#ff5252"
+        master_desc  = str(bear_count) + " bearish signals — market correction possible"
+        master_score = str(bear_count) + "/" + str(total_sigs) + " Bearish"
+    else:
+        master_label = "🟡 MIXED — Wait Karo"
+        master_color = "#ffd600"
+        master_bg    = "#ffd60015"
+        master_bdr   = "#ffd600"
+        master_desc  = "Signals mixed hain — clear direction nahi"
+        master_score = str(bull_count) + "B / " + str(bear_count) + "Be"
+
+    # Master card
+    ms = master_score
+    ml = master_label
+    mc = master_color
+    mbg = master_bg
+    mbdr = master_bdr
+    md = master_desc
+
+    master_html  = '<div style="background:' + mbg + ';border:2px solid ' + mbdr + ';border-radius:14px;padding:16px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">'
+    master_html += '<div>'
+    master_html += '<div style="font-size:22px;font-weight:900;color:' + mc + '">' + ml + '</div>'
+    master_html += '<div style="font-size:12px;color:#90b8d8;margin-top:5px">' + md + '</div>'
+    master_html += '</div>'
+    master_html += '<div style="text-align:center;background:' + mc + '20;border:1px solid ' + mc + '60;border-radius:10px;padding:10px 16px">'
+    master_html += '<div style="font-size:11px;color:#6495b8;margin-bottom:3px">Score</div>'
+    master_html += '<div style="font-size:20px;font-weight:900;color:' + mc + ';font-family:monospace">' + ms + '</div>'
+    master_html += '</div></div>'
+    st.markdown(master_html, unsafe_allow_html=True)
+
+    # Signal breakdown — 3 columns
+    os_c1, os_c2, os_c3 = st.columns(3)
+
+    # VIX card
+    _vix_d = str(round(_vix, 2)) if _vix else "—"
+    _vix_s = "HIGH FEAR" if (_vix and _vix > 20) else ("CAUTION" if (_vix and _vix > 15) else ("LOW FEAR" if (_vix and _vix < 14) else "NORMAL"))
+    _vix_c = "#ff5252" if (_vix and _vix > 20) else ("#ffd600" if (_vix and _vix > 15) else ("#00e676" if (_vix and _vix < 14) else "#6495b8"))
+    _vix_signal = "🟢 Oversold hint" if (_vix and _vix > 18) else ("🔴 Overbought hint" if (_vix and _vix < 14) else "⚪ Normal")
+    _vix_sc = "#00e676" if (_vix and _vix > 18) else ("#ff5252" if (_vix and _vix < 14) else "#6495b8")
+    with os_c1:
+        vix_html  = '<div style="background:#0d1929;border:1px solid ' + _vix_c + '40;border-radius:10px;padding:12px;text-align:center">'
+        vix_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">India VIX</div>'
+        vix_html += '<div style="font-size:32px;font-weight:900;color:' + _vix_c + ';font-family:monospace">' + _vix_d + '</div>'
+        vix_html += '<div style="font-size:11px;color:' + _vix_c + ';font-weight:700;margin-top:3px">' + _vix_s + '</div>'
+        vix_html += '<div style="margin-top:8px;padding:5px;background:' + _vix_sc + '15;border-radius:6px;font-size:11px;color:' + _vix_sc + ';font-weight:700">' + _vix_signal + '</div>'
+        vix_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">&gt;20 = Oversold | &lt;12 = Overbought</div>'
+        vix_html += '</div>'
+        st.markdown(vix_html, unsafe_allow_html=True)
+
+    # PCR card
+    _pcr_d = str(_pcr) if _pcr else "—"
+    _pcr_c = "#00e676" if (_pcr and _pcr > 1.3) else ("#4ade80" if (_pcr and _pcr > 1.0) else ("#ff5252" if (_pcr and _pcr < 0.7) else ("#f87171" if (_pcr and _pcr < 0.9) else "#6495b8")))
+    _pcr_s = "🟢 Bullish" if (_pcr and _pcr > 1.1) else ("🔴 Bearish" if (_pcr and _pcr < 0.9) else "⚪ Neutral")
+    _pcr_sc = "#00e676" if (_pcr and _pcr > 1.1) else ("#ff5252" if (_pcr and _pcr < 0.9) else "#6495b8")
+    with os_c2:
+        pcr_html  = '<div style="background:#0d1929;border:1px solid ' + _pcr_c + '40;border-radius:10px;padding:12px;text-align:center">'
+        pcr_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Live PCR</div>'
+        pcr_html += '<div style="font-size:32px;font-weight:900;color:' + _pcr_c + ';font-family:monospace">' + _pcr_d + '</div>'
+        pcr_html += '<div style="font-size:11px;color:' + _pcr_c + ';font-weight:700;margin-top:3px">Put/Call Ratio</div>'
+        pcr_html += '<div style="margin-top:8px;padding:5px;background:' + _pcr_sc + '15;border-radius:6px;font-size:11px;color:' + _pcr_sc + ';font-weight:700">' + _pcr_s + '</div>'
+        pcr_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">&gt;1.3 = Oversold | &lt;0.7 = Overbought</div>'
+        pcr_html += '</div>'
+        st.markdown(pcr_html, unsafe_allow_html=True)
+
+    # OI Signal card
+    _oi_s = "—"; _oi_c = "#6495b8"; _oi_d = "Data aa raha hai"
+    if signals_bull and any(s[0] == "OI" for s in signals_bull):
+        _oi_s = "🟢 Bulls Active"; _oi_c = "#00e676"
+        _oi_d = next(s[1] for s in signals_bull if s[0] == "OI")
+    elif signals_bear and any(s[0] == "OI" for s in signals_bear):
+        _oi_s = "🔴 Bears Active"; _oi_c = "#ff5252"
+        _oi_d = next(s[1] for s in signals_bear if s[0] == "OI")
+    with os_c3:
+        oi_html  = '<div style="background:#0d1929;border:1px solid ' + _oi_c + '40;border-radius:10px;padding:12px;text-align:center">'
+        oi_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">OI Signal</div>'
+        oi_html += '<div style="font-size:18px;font-weight:900;color:' + _oi_c + ';margin:8px 0">' + _oi_s + '</div>'
+        oi_html += '<div style="font-size:11px;color:#90b8d8">' + _oi_d + '</div>'
+        oi_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">Put OI up = Bullish | Call OI up = Bearish</div>'
+        oi_html += '</div>'
+        st.markdown(oi_html, unsafe_allow_html=True)
+
+    # Signal rules reminder
+    st.markdown(
+        '<div style="background:#0f1e35;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:11px;color:#6495b8;line-height:1.8">'
+        '<b style="color:#90b8d8">Oversold Rules:</b> '
+        'VIX &gt; 20 + PCR &gt; 1.3 + Put OI badha = Strong BUY &nbsp;|&nbsp; '
+        '<b style="color:#90b8d8">Overbought Rules:</b> '
+        'VIX &lt; 12 + PCR &lt; 0.7 + Call OI badha = Strong SELL &nbsp;|&nbsp; '
+        '<b style="color:#ffd600">2+ signals = Trade lo | 1 signal = Wait karo</b>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+except Exception as _ob_e:
+    st.markdown('<div style="font-size:11px;color:#6495b8;padding:8px">Oversold/Overbought error: ' + str(_ob_e) + '</div>', unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["📊 NIFTY Analysis", "🏦 BANK NIFTY Analysis", "📈 SENSEX Analysis"])
 
