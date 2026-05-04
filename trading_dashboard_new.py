@@ -2017,186 +2017,181 @@ with col4:
 st.markdown("---")
 
 # ══════════════════════════════════════════════════════════════
-# 🎯 OVERSOLD / OVERBOUGHT MASTER SIGNAL
 # ══════════════════════════════════════════════════════════════
-st.markdown('<div class="sec-header" style="border-left:3px solid #a855f7">🎯 Oversold / Overbought Master Signal</div>', unsafe_allow_html=True)
+# 🎯 TRADE DECISION SCORE CARD
+# ══════════════════════════════════════════════════════════════
+st.markdown('<div class="sec-header" style="border-left:3px solid #f59e0b">🎯 Trade Decision Score Card</div>', unsafe_allow_html=True)
 
 try:
-    # ── Collect signals ────────────────────────────────────────
-    signals_bull = []  # oversold = bullish signals
-    signals_bear = []  # overbought = bearish signals
+    _score_items = []  # (label, score, max, color, detail)
 
-    # 1. VIX signal
+    # ── 1. RSI Score (0-2) ────────────────────────────────────
+    _rsi_score = 0; _rsi_detail = "Data nahi"; _rsi_col = "#6495b8"
     try:
-        _vix = vix_val if 'vix_val' in dir() else None
-    except:
-        _vix = None
+        _rsi_candles = safe_api_call(get_intraday_candles, token, "NSE_INDEX|Nifty 50", "15minute", fallback=[])
+        if _rsi_candles and len(_rsi_candles) >= 16:
+            _rsi_v, _, _rsi_sig = calculate_rsi(_rsi_candles, period=14)
+            if _rsi_v:
+                if _rsi_v <= 30:   _rsi_score=2; _rsi_col="#00e676"; _rsi_detail="RSI "+str(_rsi_v)+" — Strong oversold BUY"
+                elif _rsi_v <= 45: _rsi_score=1; _rsi_col="#4ade80"; _rsi_detail="RSI "+str(_rsi_v)+" — Mild bullish"
+                elif _rsi_v >= 70: _rsi_score=-2;_rsi_col="#ff5252"; _rsi_detail="RSI "+str(_rsi_v)+" — Strong overbought SELL"
+                elif _rsi_v >= 55: _rsi_score=-1;_rsi_col="#f87171"; _rsi_detail="RSI "+str(_rsi_v)+" — Mild bearish"
+                else:              _rsi_score=0; _rsi_col="#ffd600"; _rsi_detail="RSI "+str(_rsi_v)+" — Neutral"
+    except: pass
+    _score_items.append(("📊 RSI (15min)", _rsi_score, 2, _rsi_col, _rsi_detail))
 
-    if _vix:
-        if _vix > 20:
-            signals_bull.append(("VIX", f"VIX {_vix:.1f} > 20", "Extreme fear — bounce likely", "#00e676"))
-        elif _vix > 18:
-            signals_bull.append(("VIX", f"VIX {_vix:.1f} > 18", "High fear zone — caution", "#4ade80"))
-        elif _vix < 12:
-            signals_bear.append(("VIX", f"VIX {_vix:.1f} < 12", "Too calm — correction possible", "#ff5252"))
-        elif _vix < 14:
-            signals_bear.append(("VIX", f"VIX {_vix:.1f} < 14", "Low fear — watch for reversal", "#f87171"))
-
-    # 2. PCR signal (from session state)
-    _pcr = None
-    for _k, _v in st.session_state.get("oi_sticky_data", {}).items():
-        _rows = _v.get("rows", [])
-        if _rows:
-            _tc = sum(r["call_oi"] for r in _rows)
-            _tp = sum(r["put_oi"]  for r in _rows)
-            if _tc > 0:
-                _pcr = round(_tp / _tc, 3)
+    # ── 2. PCR Score (0-2) ────────────────────────────────────
+    _pcr_score = 0; _pcr_detail = "Data nahi"; _pcr_col = "#6495b8"; _pcr_v = None
+    try:
+        for _k, _v in st.session_state.get("oi_sticky_data", {}).items():
+            _rws = _v.get("rows", [])
+            if _rws:
+                _tc = sum(r["call_oi"] for r in _rws)
+                _tp = sum(r["put_oi"]  for r in _rws)
+                if _tc > 0: _pcr_v = round(_tp/_tc, 3)
             break
+        if _pcr_v:
+            if _pcr_v >= 1.3:   _pcr_score=2;  _pcr_col="#00e676"; _pcr_detail="PCR "+str(_pcr_v)+" — Strongly bullish"
+            elif _pcr_v >= 1.1: _pcr_score=1;  _pcr_col="#4ade80"; _pcr_detail="PCR "+str(_pcr_v)+" — Mildly bullish"
+            elif _pcr_v <= 0.7: _pcr_score=-2; _pcr_col="#ff5252"; _pcr_detail="PCR "+str(_pcr_v)+" — Strongly bearish"
+            elif _pcr_v <= 0.9: _pcr_score=-1; _pcr_col="#f87171"; _pcr_detail="PCR "+str(_pcr_v)+" — Mildly bearish"
+            else:               _pcr_score=0;  _pcr_col="#ffd600"; _pcr_detail="PCR "+str(_pcr_v)+" — Neutral"
+    except: pass
+    _score_items.append(("📉 PCR", _pcr_score, 2, _pcr_col, _pcr_detail))
 
-    if _pcr:
-        if _pcr > 1.3:
-            signals_bull.append(("PCR", f"PCR {_pcr}", "Put writers bahut active — bullish", "#00e676"))
-        elif _pcr > 1.1:
-            signals_bull.append(("PCR", f"PCR {_pcr}", "Slightly bullish PCR", "#4ade80"))
-        elif _pcr < 0.7:
-            signals_bear.append(("PCR", f"PCR {_pcr}", "Call writers bahut active — bearish", "#ff5252"))
-        elif _pcr < 0.9:
-            signals_bear.append(("PCR", f"PCR {_pcr}", "Slightly bearish PCR", "#f87171"))
+    # ── 3. VIX Score (0-2) ────────────────────────────────────
+    _vix_score = 0; _vix_detail = "Data nahi"; _vix_col = "#6495b8"
+    try:
+        _vx = vix_val if 'vix_val' in dir() else None
+        if _vx:
+            if _vx >= 20:    _vix_score=2;  _vix_col="#00e676"; _vix_detail="VIX "+str(round(_vx,1))+" — Extreme fear, bounce likely"
+            elif _vx >= 16:  _vix_score=1;  _vix_col="#4ade80"; _vix_detail="VIX "+str(round(_vx,1))+" — High fear, cautious buy"
+            elif _vx <= 12:  _vix_score=-2; _vix_col="#ff5252"; _vix_detail="VIX "+str(round(_vx,1))+" — Too calm, correction possible"
+            elif _vx <= 14:  _vix_score=-1; _vix_col="#f87171"; _vix_detail="VIX "+str(round(_vx,1))+" — Low fear, be careful"
+            else:            _vix_score=0;  _vix_col="#ffd600"; _vix_detail="VIX "+str(round(_vx,1))+" — Normal range"
+    except: pass
+    _score_items.append(("😨 India VIX", _vix_score, 2, _vix_col, _vix_detail))
 
-    # 3. OI Change signal (net call vs put change)
-    for _k, _v in st.session_state.get("oi_sticky_data", {}).items():
-        _rows = _v.get("rows", [])
-        if _rows:
-            _net_cc = sum(r["call_chg"] for r in _rows)
-            _net_pc = sum(r["put_chg"]  for r in _rows)
-            if _net_pc > 0 and _net_cc <= 0:
-                signals_bull.append(("OI", f"Put OI +{abs(_net_pc):,}", "Bulls position add kar rahe", "#00e676"))
-            elif _net_cc > 0 and _net_pc <= 0:
-                signals_bear.append(("OI", f"Call OI +{abs(_net_cc):,}", "Bears position add kar rahe", "#ff5252"))
-            elif _net_cc < 0:
-                signals_bull.append(("OI", f"Call OI {_net_cc:,}", "Bears exit ho rahe — bullish", "#4ade80"))
-            elif _net_pc < 0:
-                signals_bear.append(("OI", f"Put OI {_net_pc:,}", "Bulls exit ho rahe — bearish", "#f87171"))
-        break
+    # ── 4. OI Buildup Score (0-2) ─────────────────────────────
+    _oi_score = 0; _oi_detail = "Data nahi"; _oi_col = "#6495b8"
+    try:
+        for _k, _v in st.session_state.get("oi_sticky_data", {}).items():
+            _rws = _v.get("rows", [])
+            if _rws:
+                _nc = sum(r["call_chg"] for r in _rws)
+                _np = sum(r["put_chg"]  for r in _rws)
+                if _np > abs(_nc) and _np > 0:
+                    _oi_score=2; _oi_col="#00e676"; _oi_detail="Put OI +"+str(abs(_np))+" — Bulls strong"
+                elif _np > 0 and _nc <= 0:
+                    _oi_score=1; _oi_col="#4ade80"; _oi_detail="Mixed bullish OI"
+                elif abs(_nc) > abs(_np) and _nc > 0:
+                    _oi_score=-2;_oi_col="#ff5252"; _oi_detail="Call OI +"+str(abs(_nc))+" — Bears strong"
+                elif _nc > 0 and _np <= 0:
+                    _oi_score=-1;_oi_col="#f87171"; _oi_detail="Mixed bearish OI"
+                else:
+                    _oi_score=0; _oi_col="#ffd600"; _oi_detail="OI change minimal"
+            break
+    except: pass
+    _score_items.append(("📈 OI Buildup", _oi_score, 2, _oi_col, _oi_detail))
 
-    # ── Overall Signal ─────────────────────────────────────────
-    bull_count = len(signals_bull)
-    bear_count = len(signals_bear)
-    total_sigs = bull_count + bear_count
+    # ── 5. VWAP Score (0-2) ───────────────────────────────────
+    _vwap_score = 0; _vwap_detail = "Data nahi"; _vwap_col = "#6495b8"
+    try:
+        _vc = safe_api_call(get_intraday_candles, token, "NSE_INDEX|Nifty 50", "15minute", fallback=[])
+        if _vc and len(_vc) >= 5:
+            _vwap_v, _, _ = calculate_vwap_atr(_vc)
+            _lc = float(_vc[-1][4])
+            if _vwap_v:
+                _diff_pct = ((_lc - _vwap_v) / _vwap_v) * 100
+                if _diff_pct >= 0.3:   _vwap_score=2;  _vwap_col="#00e676"; _vwap_detail="Price VWAP se "+str(round(_diff_pct,1))+"% upar — Bullish"
+                elif _diff_pct >= 0:   _vwap_score=1;  _vwap_col="#4ade80"; _vwap_detail="Price VWAP ke thoda upar"
+                elif _diff_pct <= -0.3:_vwap_score=-2; _vwap_col="#ff5252"; _vwap_detail="Price VWAP se "+str(round(abs(_diff_pct),1))+"% neeche — Bearish"
+                else:                  _vwap_score=-1; _vwap_col="#f87171"; _vwap_detail="Price VWAP ke thoda neeche"
+    except: pass
+    _score_items.append(("📐 VWAP", _vwap_score, 2, _vwap_col, _vwap_detail))
 
-    if total_sigs == 0:
-        master_label = "⏳ Data collect ho raha hai"
-        master_color = "#6495b8"
-        master_bg    = "#0d1929"
-        master_bdr   = "#6495b8"
-        master_desc  = "Thodi der baad signals aayenge"
-        master_score = "—"
-    elif bull_count >= 2 and bull_count > bear_count:
-        master_label = "🟢 OVERSOLD — BUY Signal"
-        master_color = "#00e676"
-        master_bg    = "#00e67615"
-        master_bdr   = "#00e676"
-        master_desc  = str(bull_count) + " bullish signals — market bounce ke liye ready"
-        master_score = str(bull_count) + "/" + str(total_sigs) + " Bullish"
-    elif bear_count >= 2 and bear_count > bull_count:
-        master_label = "🔴 OVERBOUGHT — SELL Signal"
-        master_color = "#ff5252"
-        master_bg    = "#ff525215"
-        master_bdr   = "#ff5252"
-        master_desc  = str(bear_count) + " bearish signals — market correction possible"
-        master_score = str(bear_count) + "/" + str(total_sigs) + " Bearish"
+    # ── Total Score ────────────────────────────────────────────
+    _total = sum(s[1] for s in _score_items)
+    _max   = sum(s[2] for s in _score_items)  # 10
+    _pct   = round(((_total + _max) / (_max * 2)) * 100)  # -10 to +10 mapped to 0-100
+
+    if _total >= 6:
+        _verdict = "STRONG BUY"; _vc2="#00e676"; _vbg="#00e67615"; _vbdr="#00e676"
+        _action = "Call khareedon / Put sell karo — strong momentum"
+    elif _total >= 3:
+        _verdict = "BUY"; _vc2="#4ade80"; _vbg="#4ade8015"; _vbdr="#4ade80"
+        _action  = "Call consider karo — kam size mein"
+    elif _total >= -2:
+        _verdict = "NEUTRAL — WAIT"; _vc2="#ffd600"; _vbg="#ffd60015"; _vbdr="#ffd600"
+        _action  = "Side mein raho — signal clear nahi"
+    elif _total >= -5:
+        _verdict = "SELL"; _vc2="#f87171"; _vbg="#f8717115"; _vbdr="#f87171"
+        _action  = "Put consider karo — kam size mein"
     else:
-        master_label = "🟡 MIXED — Wait Karo"
-        master_color = "#ffd600"
-        master_bg    = "#ffd60015"
-        master_bdr   = "#ffd600"
-        master_desc  = "Signals mixed hain — clear direction nahi"
-        master_score = str(bull_count) + "B / " + str(bear_count) + "Be"
+        _verdict = "STRONG SELL"; _vc2="#ff5252"; _vbg="#ff525215"; _vbdr="#ff5252"
+        _action  = "Put khareedon / Call sell karo — strong bearish"
 
-    # Master card
-    ms = master_score
-    ml = master_label
-    mc = master_color
-    mbg = master_bg
-    mbdr = master_bdr
-    md = master_desc
+    # ── Render Score Card ─────────────────────────────────────
+    sc_c1, sc_c2 = st.columns([2, 3])
 
-    master_html  = '<div style="background:' + mbg + ';border:2px solid ' + mbdr + ';border-radius:14px;padding:16px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">'
-    master_html += '<div>'
-    master_html += '<div style="font-size:22px;font-weight:900;color:' + mc + '">' + ml + '</div>'
-    master_html += '<div style="font-size:12px;color:#90b8d8;margin-top:5px">' + md + '</div>'
-    master_html += '</div>'
-    master_html += '<div style="text-align:center;background:' + mc + '20;border:1px solid ' + mc + '60;border-radius:10px;padding:10px 16px">'
-    master_html += '<div style="font-size:11px;color:#6495b8;margin-bottom:3px">Score</div>'
-    master_html += '<div style="font-size:20px;font-weight:900;color:' + mc + ';font-family:monospace">' + ms + '</div>'
-    master_html += '</div></div>'
-    st.markdown(master_html, unsafe_allow_html=True)
+    with sc_c1:
+        # Big score display
+        _bar_w = min(max(int(_pct), 0), 100)
+        _bar_c = _vc2
+        sc_html  = '<div style="background:' + _vbg + ';border:2px solid ' + _vbdr + ';border-radius:14px;padding:20px;text-align:center">'
+        sc_html += '<div style="font-size:11px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Trade Decision Score</div>'
+        sc_html += '<div style="font-size:60px;font-weight:900;color:' + _vc2 + ';font-family:monospace;line-height:1">'
+        sc_html += ('+' if _total > 0 else '') + str(_total) + '</div>'
+        sc_html += '<div style="font-size:12px;color:#6495b8;margin:4px 0">out of +' + str(_max) + ' (max)</div>'
+        sc_html += '<div style="background:#0a1020;border-radius:6px;height:10px;overflow:hidden;margin:10px 0">'
+        sc_html += '<div style="width:' + str(_bar_w) + '%;background:linear-gradient(90deg,#ff5252,' + _bar_c + ');height:100%;border-radius:6px;transition:width 0.5s"></div>'
+        sc_html += '</div>'
+        sc_html += '<div style="font-size:18px;font-weight:800;color:' + _vc2 + ';margin-top:8px">' + _verdict + '</div>'
+        sc_html += '<div style="font-size:11px;color:#90b8d8;margin-top:6px;line-height:1.5">' + _action + '</div>'
+        sc_html += '</div>'
+        st.markdown(sc_html, unsafe_allow_html=True)
 
-    # Signal breakdown — 3 columns
-    os_c1, os_c2, os_c3 = st.columns(3)
+    with sc_c2:
+        # Signal breakdown
+        st.markdown('<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Signal Breakdown</div>', unsafe_allow_html=True)
+        for _lbl, _sc, _mx, _col, _det in _score_items:
+            _sc_str = ('+' if _sc > 0 else '') + str(_sc)
+            _bar_pct = int((((_sc + _mx) / (_mx * 2)) * 100))
+            _bar_pct = min(max(_bar_pct, 0), 100)
 
-    # VIX card
-    _vix_d = str(round(_vix, 2)) if _vix else "—"
-    _vix_s = "HIGH FEAR" if (_vix and _vix > 20) else ("CAUTION" if (_vix and _vix > 15) else ("LOW FEAR" if (_vix and _vix < 14) else "NORMAL"))
-    _vix_c = "#ff5252" if (_vix and _vix > 20) else ("#ffd600" if (_vix and _vix > 15) else ("#00e676" if (_vix and _vix < 14) else "#6495b8"))
-    _vix_signal = "🟢 Oversold hint" if (_vix and _vix > 18) else ("🔴 Overbought hint" if (_vix and _vix < 14) else "⚪ Normal")
-    _vix_sc = "#00e676" if (_vix and _vix > 18) else ("#ff5252" if (_vix and _vix < 14) else "#6495b8")
-    with os_c1:
-        vix_html  = '<div style="background:#0d1929;border:1px solid ' + _vix_c + '40;border-radius:10px;padding:12px;text-align:center">'
-        vix_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">India VIX</div>'
-        vix_html += '<div style="font-size:32px;font-weight:900;color:' + _vix_c + ';font-family:monospace">' + _vix_d + '</div>'
-        vix_html += '<div style="font-size:11px;color:' + _vix_c + ';font-weight:700;margin-top:3px">' + _vix_s + '</div>'
-        vix_html += '<div style="margin-top:8px;padding:5px;background:' + _vix_sc + '15;border-radius:6px;font-size:11px;color:' + _vix_sc + ';font-weight:700">' + _vix_signal + '</div>'
-        vix_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">&gt;20 = Oversold | &lt;12 = Overbought</div>'
-        vix_html += '</div>'
-        st.markdown(vix_html, unsafe_allow_html=True)
+            row_html  = '<div style="background:#0d1117;border:0.5px solid rgba(29,78,216,0.15);border-radius:8px;padding:8px 12px;margin-bottom:6px">'
+            row_html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+            row_html += '<span style="font-size:12px;color:#c8dff5">' + _lbl + '</span>'
+            row_html += '<span style="font-size:14px;font-weight:700;color:' + _col + ';font-family:monospace">' + _sc_str + '/' + str(_mx) + '</span>'
+            row_html += '</div>'
+            row_html += '<div style="background:#0a1020;border-radius:3px;height:4px;overflow:hidden;margin-bottom:5px">'
+            row_html += '<div style="width:' + str(_bar_pct) + '%;background:' + _col + ';height:100%;border-radius:3px"></div>'
+            row_html += '</div>'
+            row_html += '<div style="font-size:10px;color:#6495b8">' + _det + '</div>'
+            row_html += '</div>'
+            st.markdown(row_html, unsafe_allow_html=True)
 
-    # PCR card
-    _pcr_d = str(_pcr) if _pcr else "—"
-    _pcr_c = "#00e676" if (_pcr and _pcr > 1.3) else ("#4ade80" if (_pcr and _pcr > 1.0) else ("#ff5252" if (_pcr and _pcr < 0.7) else ("#f87171" if (_pcr and _pcr < 0.9) else "#6495b8")))
-    _pcr_s = "🟢 Bullish" if (_pcr and _pcr > 1.1) else ("🔴 Bearish" if (_pcr and _pcr < 0.9) else "⚪ Neutral")
-    _pcr_sc = "#00e676" if (_pcr and _pcr > 1.1) else ("#ff5252" if (_pcr and _pcr < 0.9) else "#6495b8")
-    with os_c2:
-        pcr_html  = '<div style="background:#0d1929;border:1px solid ' + _pcr_c + '40;border-radius:10px;padding:12px;text-align:center">'
-        pcr_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Live PCR</div>'
-        pcr_html += '<div style="font-size:32px;font-weight:900;color:' + _pcr_c + ';font-family:monospace">' + _pcr_d + '</div>'
-        pcr_html += '<div style="font-size:11px;color:' + _pcr_c + ';font-weight:700;margin-top:3px">Put/Call Ratio</div>'
-        pcr_html += '<div style="margin-top:8px;padding:5px;background:' + _pcr_sc + '15;border-radius:6px;font-size:11px;color:' + _pcr_sc + ';font-weight:700">' + _pcr_s + '</div>'
-        pcr_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">&gt;1.3 = Oversold | &lt;0.7 = Overbought</div>'
-        pcr_html += '</div>'
-        st.markdown(pcr_html, unsafe_allow_html=True)
-
-    # OI Signal card
-    _oi_s = "—"; _oi_c = "#6495b8"; _oi_d = "Data aa raha hai"
-    if signals_bull and any(s[0] == "OI" for s in signals_bull):
-        _oi_s = "🟢 Bulls Active"; _oi_c = "#00e676"
-        _oi_d = next(s[1] for s in signals_bull if s[0] == "OI")
-    elif signals_bear and any(s[0] == "OI" for s in signals_bear):
-        _oi_s = "🔴 Bears Active"; _oi_c = "#ff5252"
-        _oi_d = next(s[1] for s in signals_bear if s[0] == "OI")
-    with os_c3:
-        oi_html  = '<div style="background:#0d1929;border:1px solid ' + _oi_c + '40;border-radius:10px;padding:12px;text-align:center">'
-        oi_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">OI Signal</div>'
-        oi_html += '<div style="font-size:18px;font-weight:900;color:' + _oi_c + ';margin:8px 0">' + _oi_s + '</div>'
-        oi_html += '<div style="font-size:11px;color:#90b8d8">' + _oi_d + '</div>'
-        oi_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">Put OI up = Bullish | Call OI up = Bearish</div>'
-        oi_html += '</div>'
-        st.markdown(oi_html, unsafe_allow_html=True)
-
-    # Signal rules reminder
+    # Scoring legend
     st.markdown(
-        '<div style="background:#0f1e35;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:11px;color:#6495b8;line-height:1.8">'
-        '<b style="color:#90b8d8">Oversold Rules:</b> '
-        'VIX &gt; 20 + PCR &gt; 1.3 + Put OI badha = Strong BUY &nbsp;|&nbsp; '
-        '<b style="color:#90b8d8">Overbought Rules:</b> '
-        'VIX &lt; 12 + PCR &lt; 0.7 + Call OI badha = Strong SELL &nbsp;|&nbsp; '
-        '<b style="color:#ffd600">2+ signals = Trade lo | 1 signal = Wait karo</b>'
+        '<div style="background:#0f1e35;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:11px;color:#6495b8;line-height:1.8">'
+        '<b style="color:#90b8d8">Score Guide:</b> '
+        '<span style="color:#00e676">+6 to +10 = STRONG BUY</span> | '
+        '<span style="color:#4ade80">+3 to +5 = BUY</span> | '
+        '<span style="color:#ffd600">-2 to +2 = WAIT</span> | '
+        '<span style="color:#f87171">-3 to -5 = SELL</span> | '
+        '<span style="color:#ff5252">-6 to -10 = STRONG SELL</span><br>'
+        '<b style="color:#ffd600">Rule: Score +6 ya upar ho tab hi trade lo — warna wait karo!</b>'
         '</div>',
         unsafe_allow_html=True
     )
 
-except Exception as _ob_e:
-    st.markdown('<div style="font-size:11px;color:#6495b8;padding:8px">Oversold/Overbought error: ' + str(_ob_e) + '</div>', unsafe_allow_html=True)
+except Exception as _sc_e:
+    st.markdown('<div style="font-size:11px;color:#6495b8;padding:8px">Score card error: ' + str(_sc_e) + '</div>', unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ANALYSIS TABS
+# ══════════════════════════════════════════════════════════════
 
 tab1, tab2, tab3 = st.tabs(["📊 NIFTY Analysis", "🏦 BANK NIFTY Analysis", "📈 SENSEX Analysis"])
 
