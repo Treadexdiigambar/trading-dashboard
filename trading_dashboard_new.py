@@ -609,6 +609,7 @@ for key, val in [
     ("cache_timestamp",  ""),
     ("oi_wall_ticker",   []),   # [{name, resistance, res_oi, support, sup_oi, updated}]
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
+    ("prev_oi_timestamp",  ""),  # timestamp when prev OI snapshot was taken
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -1227,6 +1228,8 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
                     except:
                         prev_oi[k] = v
                 prev_oi["__timestamp__"] = raw.get("timestamp", "")
+                # Session state mein bhi save karo — chart section access kar sake
+                st.session_state["prev_oi_timestamp"] = raw.get("timestamp", "")
                 print(f"[INFO] OI cache loaded: {len(prev_oi)} strikes")
             else:
                 print(f"[INFO] OI cache expired — fresh start")
@@ -1293,6 +1296,8 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
             _save_ts = now_ist().strftime("%I:%M %p")
             with open(oi_file, "w") as f:
                 json.dump({"date": str(date.today()), "timestamp": _save_ts, "data": {str(k): v for k, v in curr_oi.items()}}, f)
+            # Current time = next run ka "prev" time hoga
+            st.session_state["prev_oi_timestamp"] = _save_ts
             print(f"[INFO] OI cache saved: {len(curr_oi)} strikes")
         except Exception as e:
             print(f"[WARN] OI cache save failed: {e}")
@@ -2748,7 +2753,7 @@ for tab, instrument, name, spot in [
 
                 # Time labels for tooltip
                 _now_time  = now_ist().strftime("%I:%M %p")
-                _prev_time = prev_oi.get("__timestamp__", "") if "prev_oi" in dir() else ""
+                _prev_time = st.session_state.get("prev_oi_timestamp", "")
                 _prev_lbl  = _prev_time if _prev_time else "prev session"
 
                 # Helper: format OI in Lakhs/K
