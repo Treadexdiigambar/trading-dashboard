@@ -2733,20 +2733,92 @@ for tab, instrument, name, spot in [
                 badge_html += '</div>'
                 st.markdown(badge_html, unsafe_allow_html=True)
 
-                # OI Chart — sirf Total OI
+                # OI Chart — Total OI + Change in OI hover tooltip
+                strikes_list   = df_d["Strike"].tolist()
+                call_oi_list   = df_d["Call OI"].tolist()
+                put_oi_list    = df_d["Put OI"].tolist()
+                call_chg_list  = df_d["Call OI Change"].tolist()
+                put_chg_list   = df_d["Put OI Change"].tolist()
+
+                # Prev OI = current - change
+                call_prev_list = [c - ch for c, ch in zip(call_oi_list, call_chg_list)]
+                put_prev_list  = [p - ph for p, ph in zip(put_oi_list,  put_chg_list)]
+
+                # Tooltip time label — current IST time
+                _now_lbl = now_ist().strftime("%I:%M %p")
+
+                # Build customdata: [call_prev, call_chg, put_prev, put_chg, put_oi, call_oi]
+                custom = list(zip(call_prev_list, call_chg_list,
+                                  put_prev_list,  put_chg_list,
+                                  put_oi_list,    call_oi_list))
+
+                # Call bar hover template — exactly like screenshot
+                call_hover = (
+                    "<b>Strike %{x}</b><br>"
+                    "<span style='color:#00e676'>● Put OI prev</span>  %{customdata[2]:,.0f}<br>"
+                    "<span style='color:#00e676'>▨ Put OI chg </span>  %{customdata[3]:+,.0f}<br>"
+                    "<span style='color:#00e676'>● Put OI now </span>  %{customdata[4]:,.0f}<br>"
+                    "<span style='color:#ff5252'>● Call OI prev</span> %{customdata[0]:,.0f}<br>"
+                    "<span style='color:#ff5252'>▨ Call OI chg</span>  %{customdata[1]:+,.0f}<br>"
+                    "<span style='color:#ff5252'>● Call OI now </span> %{customdata[5]:,.0f}<br>"
+                    "<extra></extra>"
+                )
+                put_hover = call_hover  # same tooltip for both bars
+
                 fig_oi = go.Figure()
+
+                # Call OI bars — top3 bright, rest dim
                 fig_oi.add_trace(go.Bar(
-                    x=df_d["Strike"].tolist(), y=df_d["Call OI"].tolist(),
-                    name="Call OI (Resistance)", marker_color=call_colors,
-                    hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
+                    x=strikes_list, y=call_oi_list,
+                    name="Call OI (Resistance)",
+                    marker_color=call_colors,
+                    customdata=custom,
+                    hovertemplate=call_hover,
                 ))
+
+                # Put OI bars
                 fig_oi.add_trace(go.Bar(
-                    x=df_d["Strike"].tolist(), y=df_d["Put OI"].tolist(),
-                    name="Put OI (Support)", marker_color=put_colors,
-                    hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
+                    x=strikes_list, y=put_oi_list,
+                    name="Put OI (Support)",
+                    marker_color=put_colors,
+                    customdata=custom,
+                    hovertemplate=put_hover,
                 ))
+
+                # Call OI Change overlay bars (hatched — shown as lighter color on top)
+                call_chg_colors = [
+                    "rgba(255,82,82,0.45)"  if v >= 0 else "rgba(255,82,82,0.18)"
+                    for v in call_chg_list
+                ]
+                put_chg_colors = [
+                    "rgba(0,230,118,0.45)"  if v >= 0 else "rgba(0,230,118,0.18)"
+                    for v in put_chg_list
+                ]
+
+                fig_oi.add_trace(go.Bar(
+                    x=strikes_list,
+                    y=[abs(v) for v in call_chg_list],
+                    name="Call OI Change",
+                    marker_color=call_chg_colors,
+                    marker_line=dict(width=1, color="rgba(255,82,82,0.6)"),
+                    customdata=custom,
+                    hovertemplate=call_hover,
+                    showlegend=True,
+                ))
+
+                fig_oi.add_trace(go.Bar(
+                    x=strikes_list,
+                    y=[abs(v) for v in put_chg_list],
+                    name="Put OI Change",
+                    marker_color=put_chg_colors,
+                    marker_line=dict(width=1, color="rgba(0,230,118,0.6)"),
+                    customdata=custom,
+                    hovertemplate=put_hover,
+                    showlegend=True,
+                ))
+
                 chart_title = "<b>" + name + " OI — Big Players Position</b>"
-                y_title     = "Open Interest"
+                y_title     = "Call / Put OI"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
                                  annotation_text="ATM " + str(atm), annotation_font_color="#ffd600")
@@ -2756,18 +2828,32 @@ for tab, instrument, name, spot in [
                 if max_pain:
                     fig_oi.add_vline(x=max_pain, line_width=2, line_dash="longdash", line_color="#ff9500",
                                      annotation_text="⭐ Max Pain " + str(max_pain), annotation_font_color="#ff9500")
+
                 fig_oi.update_layout(
                     title=dict(text=chart_title, font=dict(size=14, color="#90b8d8", family="Inter")),
-                    barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
-                    font=dict(color="#7aa0be", family="Inter"), height=440,
+                    barmode="group",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
+                    font=dict(color="#7aa0be", family="Inter"), height=460,
                     margin=dict(l=10, r=10, t=50, b=10),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                                font=dict(size=11, color="#90b8d8"), bgcolor="rgba(0,0,0,0)"),
-                    xaxis=dict(title="Strike Price", gridcolor="rgba(29,78,216,0.1)", zeroline=False,
-                               tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
-                    yaxis=dict(title=y_title, gridcolor="rgba(29,78,216,0.1)", zeroline=False,
-                               tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
+                    legend=dict(
+                        orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                        font=dict(size=11, color="#90b8d8"), bgcolor="rgba(0,0,0,0)"
+                    ),
+                    xaxis=dict(
+                        title="Strike Price", gridcolor="rgba(29,78,216,0.1)", zeroline=False,
+                        tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"
+                    ),
+                    yaxis=dict(
+                        title=y_title, gridcolor="rgba(29,78,216,0.1)", zeroline=False,
+                        tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"
+                    ),
                     bargap=0.15,
+                    hoverlabel=dict(
+                        bgcolor="#0d1929",
+                        bordercolor="rgba(29,78,216,0.5)",
+                        font=dict(size=12, color="#e8f4ff", family="JetBrains Mono"),
+                    ),
+                    hovermode="x unified" if False else "closest",
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
 
