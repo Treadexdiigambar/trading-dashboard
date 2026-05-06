@@ -609,7 +609,6 @@ for key, val in [
     ("cache_timestamp",  ""),
     ("oi_wall_ticker",   []),   # [{name, resistance, res_oi, support, sup_oi, updated}]
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
-    ("prev_oi_timestamp",  ""),  # timestamp when prev OI snapshot was taken
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -1227,9 +1226,6 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
                         prev_oi[int(float(k))] = v
                     except:
                         prev_oi[k] = v
-                prev_oi["__timestamp__"] = raw.get("timestamp", "")
-                # Session state mein bhi save karo — chart section access kar sake
-                st.session_state["prev_oi_timestamp"] = raw.get("timestamp", "")
                 print(f"[INFO] OI cache loaded: {len(prev_oi)} strikes")
             else:
                 print(f"[INFO] OI cache expired — fresh start")
@@ -1293,11 +1289,8 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
     # Save current OI — sirf file mein (reliable)
     if curr_oi:
         try:
-            _save_ts = now_ist().strftime("%I:%M %p")
             with open(oi_file, "w") as f:
-                json.dump({"date": str(date.today()), "timestamp": _save_ts, "data": {str(k): v for k, v in curr_oi.items()}}, f)
-            # Current time = next run ka "prev" time hoga
-            st.session_state["prev_oi_timestamp"] = _save_ts
+                json.dump({"date": str(date.today()), "data": {str(k): v for k, v in curr_oi.items()}}, f)
             print(f"[INFO] OI cache saved: {len(curr_oi)} strikes")
         except Exception as e:
             print(f"[WARN] OI cache save failed: {e}")
@@ -2024,186 +2017,8 @@ with col4:
 st.markdown("---")
 
 # ══════════════════════════════════════════════════════════════
-# 🎯 OVERSOLD / OVERBOUGHT MASTER SIGNAL
+# ANALYSIS TABS
 # ══════════════════════════════════════════════════════════════
-st.markdown('<div class="sec-header" style="border-left:3px solid #a855f7">🎯 Oversold / Overbought Master Signal</div>', unsafe_allow_html=True)
-
-try:
-    # ── Collect signals ────────────────────────────────────────
-    signals_bull = []  # oversold = bullish signals
-    signals_bear = []  # overbought = bearish signals
-
-    # 1. VIX signal
-    try:
-        _vix = vix_val if 'vix_val' in dir() else None
-    except:
-        _vix = None
-
-    if _vix:
-        if _vix > 20:
-            signals_bull.append(("VIX", f"VIX {_vix:.1f} > 20", "Extreme fear — bounce likely", "#00e676"))
-        elif _vix > 18:
-            signals_bull.append(("VIX", f"VIX {_vix:.1f} > 18", "High fear zone — caution", "#4ade80"))
-        elif _vix < 12:
-            signals_bear.append(("VIX", f"VIX {_vix:.1f} < 12", "Too calm — correction possible", "#ff5252"))
-        elif _vix < 14:
-            signals_bear.append(("VIX", f"VIX {_vix:.1f} < 14", "Low fear — watch for reversal", "#f87171"))
-
-    # 2. PCR signal (from session state)
-    _pcr = None
-    for _k, _v in st.session_state.get("oi_sticky_data", {}).items():
-        _rows = _v.get("rows", [])
-        if _rows:
-            _tc = sum(r["call_oi"] for r in _rows)
-            _tp = sum(r["put_oi"]  for r in _rows)
-            if _tc > 0:
-                _pcr = round(_tp / _tc, 3)
-            break
-
-    if _pcr:
-        if _pcr > 1.3:
-            signals_bull.append(("PCR", f"PCR {_pcr}", "Put writers bahut active — bullish", "#00e676"))
-        elif _pcr > 1.1:
-            signals_bull.append(("PCR", f"PCR {_pcr}", "Slightly bullish PCR", "#4ade80"))
-        elif _pcr < 0.7:
-            signals_bear.append(("PCR", f"PCR {_pcr}", "Call writers bahut active — bearish", "#ff5252"))
-        elif _pcr < 0.9:
-            signals_bear.append(("PCR", f"PCR {_pcr}", "Slightly bearish PCR", "#f87171"))
-
-    # 3. OI Change signal (net call vs put change)
-    for _k, _v in st.session_state.get("oi_sticky_data", {}).items():
-        _rows = _v.get("rows", [])
-        if _rows:
-            _net_cc = sum(r["call_chg"] for r in _rows)
-            _net_pc = sum(r["put_chg"]  for r in _rows)
-            if _net_pc > 0 and _net_cc <= 0:
-                signals_bull.append(("OI", f"Put OI +{abs(_net_pc):,}", "Bulls position add kar rahe", "#00e676"))
-            elif _net_cc > 0 and _net_pc <= 0:
-                signals_bear.append(("OI", f"Call OI +{abs(_net_cc):,}", "Bears position add kar rahe", "#ff5252"))
-            elif _net_cc < 0:
-                signals_bull.append(("OI", f"Call OI {_net_cc:,}", "Bears exit ho rahe — bullish", "#4ade80"))
-            elif _net_pc < 0:
-                signals_bear.append(("OI", f"Put OI {_net_pc:,}", "Bulls exit ho rahe — bearish", "#f87171"))
-        break
-
-    # ── Overall Signal ─────────────────────────────────────────
-    bull_count = len(signals_bull)
-    bear_count = len(signals_bear)
-    total_sigs = bull_count + bear_count
-
-    if total_sigs == 0:
-        master_label = "⏳ Data collect ho raha hai"
-        master_color = "#6495b8"
-        master_bg    = "#0d1929"
-        master_bdr   = "#6495b8"
-        master_desc  = "Thodi der baad signals aayenge"
-        master_score = "—"
-    elif bull_count >= 2 and bull_count > bear_count:
-        master_label = "🟢 OVERSOLD — BUY Signal"
-        master_color = "#00e676"
-        master_bg    = "#00e67615"
-        master_bdr   = "#00e676"
-        master_desc  = str(bull_count) + " bullish signals — market bounce ke liye ready"
-        master_score = str(bull_count) + "/" + str(total_sigs) + " Bullish"
-    elif bear_count >= 2 and bear_count > bull_count:
-        master_label = "🔴 OVERBOUGHT — SELL Signal"
-        master_color = "#ff5252"
-        master_bg    = "#ff525215"
-        master_bdr   = "#ff5252"
-        master_desc  = str(bear_count) + " bearish signals — market correction possible"
-        master_score = str(bear_count) + "/" + str(total_sigs) + " Bearish"
-    else:
-        master_label = "🟡 MIXED — Wait Karo"
-        master_color = "#ffd600"
-        master_bg    = "#ffd60015"
-        master_bdr   = "#ffd600"
-        master_desc  = "Signals mixed hain — clear direction nahi"
-        master_score = str(bull_count) + "B / " + str(bear_count) + "Be"
-
-    # Master card
-    ms = master_score
-    ml = master_label
-    mc = master_color
-    mbg = master_bg
-    mbdr = master_bdr
-    md = master_desc
-
-    master_html  = '<div style="background:' + mbg + ';border:2px solid ' + mbdr + ';border-radius:14px;padding:16px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">'
-    master_html += '<div>'
-    master_html += '<div style="font-size:22px;font-weight:900;color:' + mc + '">' + ml + '</div>'
-    master_html += '<div style="font-size:12px;color:#90b8d8;margin-top:5px">' + md + '</div>'
-    master_html += '</div>'
-    master_html += '<div style="text-align:center;background:' + mc + '20;border:1px solid ' + mc + '60;border-radius:10px;padding:10px 16px">'
-    master_html += '<div style="font-size:11px;color:#6495b8;margin-bottom:3px">Score</div>'
-    master_html += '<div style="font-size:20px;font-weight:900;color:' + mc + ';font-family:monospace">' + ms + '</div>'
-    master_html += '</div></div>'
-    st.markdown(master_html, unsafe_allow_html=True)
-
-    # Signal breakdown — 3 columns
-    os_c1, os_c2, os_c3 = st.columns(3)
-
-    # VIX card
-    _vix_d = str(round(_vix, 2)) if _vix else "—"
-    _vix_s = "HIGH FEAR" if (_vix and _vix > 20) else ("CAUTION" if (_vix and _vix > 15) else ("LOW FEAR" if (_vix and _vix < 14) else "NORMAL"))
-    _vix_c = "#ff5252" if (_vix and _vix > 20) else ("#ffd600" if (_vix and _vix > 15) else ("#00e676" if (_vix and _vix < 14) else "#6495b8"))
-    _vix_signal = "🟢 Oversold hint" if (_vix and _vix > 18) else ("🔴 Overbought hint" if (_vix and _vix < 14) else "⚪ Normal")
-    _vix_sc = "#00e676" if (_vix and _vix > 18) else ("#ff5252" if (_vix and _vix < 14) else "#6495b8")
-    with os_c1:
-        vix_html  = '<div style="background:#0d1929;border:1px solid ' + _vix_c + '40;border-radius:10px;padding:12px;text-align:center">'
-        vix_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">India VIX</div>'
-        vix_html += '<div style="font-size:32px;font-weight:900;color:' + _vix_c + ';font-family:monospace">' + _vix_d + '</div>'
-        vix_html += '<div style="font-size:11px;color:' + _vix_c + ';font-weight:700;margin-top:3px">' + _vix_s + '</div>'
-        vix_html += '<div style="margin-top:8px;padding:5px;background:' + _vix_sc + '15;border-radius:6px;font-size:11px;color:' + _vix_sc + ';font-weight:700">' + _vix_signal + '</div>'
-        vix_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">&gt;20 = Oversold | &lt;12 = Overbought</div>'
-        vix_html += '</div>'
-        st.markdown(vix_html, unsafe_allow_html=True)
-
-    # PCR card
-    _pcr_d = str(_pcr) if _pcr else "—"
-    _pcr_c = "#00e676" if (_pcr and _pcr > 1.3) else ("#4ade80" if (_pcr and _pcr > 1.0) else ("#ff5252" if (_pcr and _pcr < 0.7) else ("#f87171" if (_pcr and _pcr < 0.9) else "#6495b8")))
-    _pcr_s = "🟢 Bullish" if (_pcr and _pcr > 1.1) else ("🔴 Bearish" if (_pcr and _pcr < 0.9) else "⚪ Neutral")
-    _pcr_sc = "#00e676" if (_pcr and _pcr > 1.1) else ("#ff5252" if (_pcr and _pcr < 0.9) else "#6495b8")
-    with os_c2:
-        pcr_html  = '<div style="background:#0d1929;border:1px solid ' + _pcr_c + '40;border-radius:10px;padding:12px;text-align:center">'
-        pcr_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Live PCR</div>'
-        pcr_html += '<div style="font-size:32px;font-weight:900;color:' + _pcr_c + ';font-family:monospace">' + _pcr_d + '</div>'
-        pcr_html += '<div style="font-size:11px;color:' + _pcr_c + ';font-weight:700;margin-top:3px">Put/Call Ratio</div>'
-        pcr_html += '<div style="margin-top:8px;padding:5px;background:' + _pcr_sc + '15;border-radius:6px;font-size:11px;color:' + _pcr_sc + ';font-weight:700">' + _pcr_s + '</div>'
-        pcr_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">&gt;1.3 = Oversold | &lt;0.7 = Overbought</div>'
-        pcr_html += '</div>'
-        st.markdown(pcr_html, unsafe_allow_html=True)
-
-    # OI Signal card
-    _oi_s = "—"; _oi_c = "#6495b8"; _oi_d = "Data aa raha hai"
-    if signals_bull and any(s[0] == "OI" for s in signals_bull):
-        _oi_s = "🟢 Bulls Active"; _oi_c = "#00e676"
-        _oi_d = next(s[1] for s in signals_bull if s[0] == "OI")
-    elif signals_bear and any(s[0] == "OI" for s in signals_bear):
-        _oi_s = "🔴 Bears Active"; _oi_c = "#ff5252"
-        _oi_d = next(s[1] for s in signals_bear if s[0] == "OI")
-    with os_c3:
-        oi_html  = '<div style="background:#0d1929;border:1px solid ' + _oi_c + '40;border-radius:10px;padding:12px;text-align:center">'
-        oi_html += '<div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">OI Signal</div>'
-        oi_html += '<div style="font-size:18px;font-weight:900;color:' + _oi_c + ';margin:8px 0">' + _oi_s + '</div>'
-        oi_html += '<div style="font-size:11px;color:#90b8d8">' + _oi_d + '</div>'
-        oi_html += '<div style="font-size:10px;color:#4e7a96;margin-top:6px">Put OI up = Bullish | Call OI up = Bearish</div>'
-        oi_html += '</div>'
-        st.markdown(oi_html, unsafe_allow_html=True)
-
-    # Signal rules reminder
-    st.markdown(
-        '<div style="background:#0f1e35;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:11px;color:#6495b8;line-height:1.8">'
-        '<b style="color:#90b8d8">Oversold Rules:</b> '
-        'VIX &gt; 20 + PCR &gt; 1.3 + Put OI badha = Strong BUY &nbsp;|&nbsp; '
-        '<b style="color:#90b8d8">Overbought Rules:</b> '
-        'VIX &lt; 12 + PCR &lt; 0.7 + Call OI badha = Strong SELL &nbsp;|&nbsp; '
-        '<b style="color:#ffd600">2+ signals = Trade lo | 1 signal = Wait karo</b>'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-except Exception as _ob_e:
-    st.markdown('<div style="font-size:11px;color:#6495b8;padding:8px">Oversold/Overbought error: ' + str(_ob_e) + '</div>', unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["📊 NIFTY Analysis", "🏦 BANK NIFTY Analysis", "📈 SENSEX Analysis"])
 
@@ -2740,112 +2555,20 @@ for tab, instrument, name, spot in [
                 badge_html += '</div>'
                 st.markdown(badge_html, unsafe_allow_html=True)
 
-                # OI Chart — Total OI + Change in OI hover tooltip
-                strikes_list  = df_d["Strike"].tolist()
-                call_oi_list  = df_d["Call OI"].tolist()
-                put_oi_list   = df_d["Put OI"].tolist()
-                call_chg_list = df_d["Call OI Change"].tolist()
-                put_chg_list  = df_d["Put OI Change"].tolist()
-
-                # Prev OI = current - change
-                call_prev_list = [c - ch for c, ch in zip(call_oi_list, call_chg_list)]
-                put_prev_list  = [p - ph for p, ph in zip(put_oi_list,  put_chg_list)]
-
-                # Time labels for tooltip
-                _now_time  = now_ist().strftime("%I:%M %p")
-                _prev_time = st.session_state.get("prev_oi_timestamp", "")
-                _prev_lbl  = _prev_time if _prev_time else "prev session"
-
-                # Helper: format OI in Lakhs/K
-                def _fmt_oi(v):
-                    v = int(v) if v else 0
-                    if abs(v) >= 100000:
-                        return f"{v/100000:.2f}L"
-                    elif abs(v) >= 1000:
-                        return f"{v/1000:.1f}K"
-                    return str(v)
-
-                def _fmt_chg(v):
-                    v = int(v) if v else 0
-                    sign = "+" if v >= 0 else ""
-                    return f"{sign}{v:,}"
-
-                # Pre-build tooltip text per strike — with time labels
-                tooltip_texts = []
-                for i, s in enumerate(strikes_list):
-                    cp = call_prev_list[i]
-                    cc = call_chg_list[i]
-                    co = call_oi_list[i]
-                    pp = put_prev_list[i]
-                    pc = put_chg_list[i]
-                    po = put_oi_list[i]
-                    txt = (
-                        f"<b>Strike {int(s)}</b><br>"
-                        f"<br>"
-                        f"Put OI at {_prev_lbl}:   {_fmt_oi(pp)}<br>"
-                        f"Put OI chg:              {_fmt_chg(pc)}<br>"
-                        f"Put OI at {_now_time}:   {_fmt_oi(po)}<br>"
-                        f"<br>"
-                        f"Call OI at {_prev_lbl}:  {_fmt_oi(cp)}<br>"
-                        f"Call OI chg:             {_fmt_chg(cc)}<br>"
-                        f"Call OI at {_now_time}:  {_fmt_oi(co)}"
-                    )
-                    tooltip_texts.append(txt)
-
-                # OI Change bar colors
-                call_chg_colors = [
-                    "rgba(255,82,82,0.5)"  if v >= 0 else "rgba(100,30,30,0.5)"
-                    for v in call_chg_list
-                ]
-                put_chg_colors = [
-                    "rgba(0,210,100,0.5)"  if v >= 0 else "rgba(20,80,40,0.5)"
-                    for v in put_chg_list
-                ]
-
+                # OI Chart — sirf Total OI
                 fig_oi = go.Figure()
-
-                # Call OI bars
                 fig_oi.add_trace(go.Bar(
-                    x=strikes_list, y=call_oi_list,
-                    name="Call OI (Resistance)",
-                    marker_color=call_colors,
-                    text=tooltip_texts,
-                    hovertemplate="%{text}<extra></extra>",
+                    x=df_d["Strike"].tolist(), y=df_d["Call OI"].tolist(),
+                    name="Call OI (Resistance)", marker_color=call_colors,
+                    hovertemplate="Strike: %{x}<br>Call OI: %{y:,.0f}<extra></extra>"
                 ))
-
-                # Put OI bars
                 fig_oi.add_trace(go.Bar(
-                    x=strikes_list, y=put_oi_list,
-                    name="Put OI (Support)",
-                    marker_color=put_colors,
-                    text=tooltip_texts,
-                    hovertemplate="%{text}<extra></extra>",
+                    x=df_d["Strike"].tolist(), y=df_d["Put OI"].tolist(),
+                    name="Put OI (Support)", marker_color=put_colors,
+                    hovertemplate="Strike: %{x}<br>Put OI: %{y:,.0f}<extra></extra>"
                 ))
-
-                # Call OI Change overlay bars
-                fig_oi.add_trace(go.Bar(
-                    x=strikes_list,
-                    y=[abs(v) for v in call_chg_list],
-                    name="Call OI Change",
-                    marker_color=call_chg_colors,
-                    marker_line=dict(width=1, color="rgba(255,82,82,0.7)"),
-                    text=tooltip_texts,
-                    hovertemplate="%{text}<extra></extra>",
-                ))
-
-                # Put OI Change overlay bars
-                fig_oi.add_trace(go.Bar(
-                    x=strikes_list,
-                    y=[abs(v) for v in put_chg_list],
-                    name="Put OI Change",
-                    marker_color=put_chg_colors,
-                    marker_line=dict(width=1, color="rgba(0,210,100,0.7)"),
-                    text=tooltip_texts,
-                    hovertemplate="%{text}<extra></extra>",
-                ))
-
                 chart_title = "<b>" + name + " OI — Big Players Position</b>"
-                y_title     = "Call / Put OI"
+                y_title     = "Open Interest"
 
                 fig_oi.add_vline(x=atm, line_width=2, line_dash="dash", line_color="#ffd600",
                                  annotation_text="ATM " + str(atm), annotation_font_color="#ffd600")
@@ -2854,37 +2577,21 @@ for tab, instrument, name, spot in [
                                      annotation_text="Spot " + str(int(spot)), annotation_font_color="#00bfff")
                 if max_pain:
                     fig_oi.add_vline(x=max_pain, line_width=2, line_dash="longdash", line_color="#ff9500",
-                                     annotation_text="Max Pain " + str(max_pain), annotation_font_color="#ff9500")
-
+                                     annotation_text="⭐ Max Pain " + str(max_pain), annotation_font_color="#ff9500")
                 fig_oi.update_layout(
                     title=dict(text=chart_title, font=dict(size=14, color="#90b8d8", family="Inter")),
-                    barmode="group",
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
-                    font=dict(color="#7aa0be", family="Inter"), height=460,
+                    barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
+                    font=dict(color="#7aa0be", family="Inter"), height=440,
                     margin=dict(l=10, r=10, t=50, b=10),
-                    legend=dict(
-                        orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                        font=dict(size=11, color="#90b8d8"), bgcolor="rgba(0,0,0,0)"
-                    ),
-                    xaxis=dict(
-                        title="Strike Price", gridcolor="rgba(29,78,216,0.1)", zeroline=False,
-                        tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"
-                    ),
-                    yaxis=dict(
-                        title=y_title, gridcolor="rgba(29,78,216,0.1)", zeroline=False,
-                        tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"
-                    ),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                                font=dict(size=11, color="#90b8d8"), bgcolor="rgba(0,0,0,0)"),
+                    xaxis=dict(title="Strike Price", gridcolor="rgba(29,78,216,0.1)", zeroline=False,
+                               tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
+                    yaxis=dict(title=y_title, gridcolor="rgba(29,78,216,0.1)", zeroline=False,
+                               tickfont=dict(size=10, family="JetBrains Mono"), tickcolor="#4e7a96"),
                     bargap=0.15,
-                    hoverlabel=dict(
-                        bgcolor="#0d1929",
-                        bordercolor="#1d4ed8",
-                        font=dict(size=12, color="#e8f4ff", family="JetBrains Mono"),
-                        align="left",
-                    ),
-                    hovermode="closest",
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
-
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
