@@ -1226,6 +1226,7 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
                         prev_oi[int(float(k))] = v
                     except:
                         prev_oi[k] = v
+                prev_oi["__timestamp__"] = raw.get("timestamp", "")
                 print(f"[INFO] OI cache loaded: {len(prev_oi)} strikes")
             else:
                 print(f"[INFO] OI cache expired — fresh start")
@@ -1289,8 +1290,9 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
     # Save current OI — sirf file mein (reliable)
     if curr_oi:
         try:
+            _save_ts = now_ist().strftime("%I:%M %p")
             with open(oi_file, "w") as f:
-                json.dump({"date": str(date.today()), "data": {str(k): v for k, v in curr_oi.items()}}, f)
+                json.dump({"date": str(date.today()), "timestamp": _save_ts, "data": {str(k): v for k, v in curr_oi.items()}}, f)
             print(f"[INFO] OI cache saved: {len(curr_oi)} strikes")
         except Exception as e:
             print(f"[WARN] OI cache save failed: {e}")
@@ -2734,46 +2736,76 @@ for tab, instrument, name, spot in [
                 st.markdown(badge_html, unsafe_allow_html=True)
 
                 # OI Chart — Total OI + Change in OI hover tooltip
-                strikes_list   = df_d["Strike"].tolist()
-                call_oi_list   = df_d["Call OI"].tolist()
-                put_oi_list    = df_d["Put OI"].tolist()
-                call_chg_list  = df_d["Call OI Change"].tolist()
-                put_chg_list   = df_d["Put OI Change"].tolist()
+                strikes_list  = df_d["Strike"].tolist()
+                call_oi_list  = df_d["Call OI"].tolist()
+                put_oi_list   = df_d["Put OI"].tolist()
+                call_chg_list = df_d["Call OI Change"].tolist()
+                put_chg_list  = df_d["Put OI Change"].tolist()
 
                 # Prev OI = current - change
                 call_prev_list = [c - ch for c, ch in zip(call_oi_list, call_chg_list)]
                 put_prev_list  = [p - ph for p, ph in zip(put_oi_list,  put_chg_list)]
 
-                # Tooltip time label — current IST time
-                _now_lbl = now_ist().strftime("%I:%M %p")
+                # Time labels for tooltip
+                _now_time  = now_ist().strftime("%I:%M %p")
+                _prev_time = prev_oi.get("__timestamp__", "") if "prev_oi" in dir() else ""
+                _prev_lbl  = _prev_time if _prev_time else "prev session"
 
-                # Build customdata: [call_prev, call_chg, put_prev, put_chg, put_oi, call_oi]
-                custom = list(zip(call_prev_list, call_chg_list,
-                                  put_prev_list,  put_chg_list,
-                                  put_oi_list,    call_oi_list))
+                # Helper: format OI in Lakhs/K
+                def _fmt_oi(v):
+                    v = int(v) if v else 0
+                    if abs(v) >= 100000:
+                        return f"{v/100000:.2f}L"
+                    elif abs(v) >= 1000:
+                        return f"{v/1000:.1f}K"
+                    return str(v)
 
-                # Call bar hover template — exactly like screenshot
-                call_hover = (
-                    "<b>Strike %{x}</b><br>"
-                    "<span style='color:#00e676'>● Put OI prev</span>  %{customdata[2]:,.0f}<br>"
-                    "<span style='color:#00e676'>▨ Put OI chg </span>  %{customdata[3]:+,.0f}<br>"
-                    "<span style='color:#00e676'>● Put OI now </span>  %{customdata[4]:,.0f}<br>"
-                    "<span style='color:#ff5252'>● Call OI prev</span> %{customdata[0]:,.0f}<br>"
-                    "<span style='color:#ff5252'>▨ Call OI chg</span>  %{customdata[1]:+,.0f}<br>"
-                    "<span style='color:#ff5252'>● Call OI now </span> %{customdata[5]:,.0f}<br>"
-                    "<extra></extra>"
-                )
-                put_hover = call_hover  # same tooltip for both bars
+                def _fmt_chg(v):
+                    v = int(v) if v else 0
+                    sign = "+" if v >= 0 else ""
+                    return f"{sign}{v:,}"
+
+                # Pre-build tooltip text per strike — with time labels
+                tooltip_texts = []
+                for i, s in enumerate(strikes_list):
+                    cp = call_prev_list[i]
+                    cc = call_chg_list[i]
+                    co = call_oi_list[i]
+                    pp = put_prev_list[i]
+                    pc = put_chg_list[i]
+                    po = put_oi_list[i]
+                    txt = (
+                        f"<b>Strike {int(s)}</b><br>"
+                        f"<br>"
+                        f"Put OI at {_prev_lbl}:   {_fmt_oi(pp)}<br>"
+                        f"Put OI chg:              {_fmt_chg(pc)}<br>"
+                        f"Put OI at {_now_time}:   {_fmt_oi(po)}<br>"
+                        f"<br>"
+                        f"Call OI at {_prev_lbl}:  {_fmt_oi(cp)}<br>"
+                        f"Call OI chg:             {_fmt_chg(cc)}<br>"
+                        f"Call OI at {_now_time}:  {_fmt_oi(co)}"
+                    )
+                    tooltip_texts.append(txt)
+
+                # OI Change bar colors
+                call_chg_colors = [
+                    "rgba(255,82,82,0.5)"  if v >= 0 else "rgba(100,30,30,0.5)"
+                    for v in call_chg_list
+                ]
+                put_chg_colors = [
+                    "rgba(0,210,100,0.5)"  if v >= 0 else "rgba(20,80,40,0.5)"
+                    for v in put_chg_list
+                ]
 
                 fig_oi = go.Figure()
 
-                # Call OI bars — top3 bright, rest dim
+                # Call OI bars
                 fig_oi.add_trace(go.Bar(
                     x=strikes_list, y=call_oi_list,
                     name="Call OI (Resistance)",
                     marker_color=call_colors,
-                    customdata=custom,
-                    hovertemplate=call_hover,
+                    text=tooltip_texts,
+                    hovertemplate="%{text}<extra></extra>",
                 ))
 
                 # Put OI bars
@@ -2781,40 +2813,30 @@ for tab, instrument, name, spot in [
                     x=strikes_list, y=put_oi_list,
                     name="Put OI (Support)",
                     marker_color=put_colors,
-                    customdata=custom,
-                    hovertemplate=put_hover,
+                    text=tooltip_texts,
+                    hovertemplate="%{text}<extra></extra>",
                 ))
 
-                # Call OI Change overlay bars (hatched — shown as lighter color on top)
-                call_chg_colors = [
-                    "rgba(255,82,82,0.45)"  if v >= 0 else "rgba(255,82,82,0.18)"
-                    for v in call_chg_list
-                ]
-                put_chg_colors = [
-                    "rgba(0,230,118,0.45)"  if v >= 0 else "rgba(0,230,118,0.18)"
-                    for v in put_chg_list
-                ]
-
+                # Call OI Change overlay bars
                 fig_oi.add_trace(go.Bar(
                     x=strikes_list,
                     y=[abs(v) for v in call_chg_list],
                     name="Call OI Change",
                     marker_color=call_chg_colors,
-                    marker_line=dict(width=1, color="rgba(255,82,82,0.6)"),
-                    customdata=custom,
-                    hovertemplate=call_hover,
-                    showlegend=True,
+                    marker_line=dict(width=1, color="rgba(255,82,82,0.7)"),
+                    text=tooltip_texts,
+                    hovertemplate="%{text}<extra></extra>",
                 ))
 
+                # Put OI Change overlay bars
                 fig_oi.add_trace(go.Bar(
                     x=strikes_list,
                     y=[abs(v) for v in put_chg_list],
                     name="Put OI Change",
                     marker_color=put_chg_colors,
-                    marker_line=dict(width=1, color="rgba(0,230,118,0.6)"),
-                    customdata=custom,
-                    hovertemplate=put_hover,
-                    showlegend=True,
+                    marker_line=dict(width=1, color="rgba(0,210,100,0.7)"),
+                    text=tooltip_texts,
+                    hovertemplate="%{text}<extra></extra>",
                 ))
 
                 chart_title = "<b>" + name + " OI — Big Players Position</b>"
@@ -2827,7 +2849,7 @@ for tab, instrument, name, spot in [
                                      annotation_text="Spot " + str(int(spot)), annotation_font_color="#00bfff")
                 if max_pain:
                     fig_oi.add_vline(x=max_pain, line_width=2, line_dash="longdash", line_color="#ff9500",
-                                     annotation_text="⭐ Max Pain " + str(max_pain), annotation_font_color="#ff9500")
+                                     annotation_text="Max Pain " + str(max_pain), annotation_font_color="#ff9500")
 
                 fig_oi.update_layout(
                     title=dict(text=chart_title, font=dict(size=14, color="#90b8d8", family="Inter")),
@@ -2850,12 +2872,14 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                     hoverlabel=dict(
                         bgcolor="#0d1929",
-                        bordercolor="rgba(29,78,216,0.5)",
+                        bordercolor="#1d4ed8",
                         font=dict(size=12, color="#e8f4ff", family="JetBrains Mono"),
+                        align="left",
                     ),
-                    hovermode="x unified" if False else "closest",
+                    hovermode="closest",
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
+
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
