@@ -908,6 +908,155 @@ def build_zone_card_html(z, zone_type, nearest_sup_strike, nearest_dem_strike):
     parts.append('</div>')
     return "".join(parts)
 
+def detect_market_reality(pcr, call_oi_chg, put_oi_chg, candles, spot, day_low, day_high, atm):
+    """
+    Dashboard signal vs Price Action conflict detect karo.
+    Returns: list of alerts with type, signal, explanation
+    """
+    alerts = []
+
+    if not candles or len(candles) < 5:
+        return alerts
+
+    try:
+        closes  = [float(c[4]) for c in candles[-10:]]
+        highs   = [float(c[2]) for c in candles[-10:]]
+        lows    = [float(c[3]) for c in candles[-10:]]
+        last_c  = closes[-1]
+        prev_c  = closes[-2] if len(closes) > 1 else last_c
+
+        # Price momentum — last 5 candles
+        price_up   = sum(1 for i in range(1, min(5, len(closes))) if closes[-i] > closes[-i-1])
+        price_down = sum(1 for i in range(1, min(5, len(closes))) if closes[-i] < closes[-i-1])
+        price_dir  = "UP" if price_up > price_down else ("DOWN" if price_down > price_up else "FLAT")
+
+        # ── SHORT COVERING DETECTION ─────────────────────────
+        # PCR low (bearish) + price bouncing UP = Bears exit ho rahe
+        if pcr and pcr < 0.85 and price_dir == "UP" and call_oi_chg < 0:
+            alerts.append({
+                "type":    "SHORT_COVERING",
+                "signal":  "⚡ SHORT COVERING DETECTED",
+                "color":   "#00e676",
+                "bg":      "#00e67615",
+                "bdr":     "#00e676",
+                "explain": (
+                    "PCR " + str(round(pcr,2)) + " (bearish) lekin price UPAR ja rahi hai + "
+                    "Call OI ghata = Bears apni positions close kar rahe hain. "
+                    "Yeh BOUNCE signal hai — dashboard ka bearish signal misleading hai abhi!"
+                ),
+                "action":  "Call consider karo — short covering rally chal rahi hai"
+            })
+
+        # ── LONG UNWINDING DETECTION ─────────────────────────
+        # PCR high (bullish) + price falling DOWN = Bulls exit ho rahe
+        if pcr and pcr > 1.15 and price_dir == "DOWN" and put_oi_chg < 0:
+            alerts.append({
+                "type":    "LONG_UNWINDING",
+                "signal":  "⚠️ LONG UNWINDING DETECTED",
+                "color":   "#ff8c00",
+                "bg":      "#ff8c0015",
+                "bdr":     "#ff8c00",
+                "explain": (
+                    "PCR " + str(round(pcr,2)) + " (bullish) lekin price NEECHE ja rahi hai + "
+                    "Put OI ghata = Bulls apni positions close kar rahe hain. "
+                    "Dashboard bullish dikhata hai lekin price neeche hai — caution!"
+                ),
+                "action":  "Put consider karo ya side mein raho"
+            })
+
+        # ── SUPPORT BOUNCE DETECTION ─────────────────────────
+        # Price support ke paas + bouncing
+        if day_low and spot:
+            dist_from_low = spot - day_low
+            if dist_from_low < 50 and price_dir == "UP":
+                alerts.append({
+                    "type":    "SUPPORT_BOUNCE",
+                    "signal":  "🟢 SUPPORT BOUNCE",
+                    "color":   "#4ade80",
+                    "bg":      "#4ade8015",
+                    "bdr":     "#4ade80",
+                    "explain": (
+                        "Spot " + str(int(spot)) + " day low " + str(int(day_low)) +
+                        " se sirf " + str(int(dist_from_low)) + " pts upar + price bounce = "
+                        "Strong support zone pe buyers aa rahe hain!"
+                    ),
+                    "action":  "CE khareedon — support hold ho raha hai"
+                })
+
+        # ── RESISTANCE REJECTION DETECTION ───────────────────
+        if day_high and spot:
+            dist_from_high = day_high - spot
+            if dist_from_high < 50 and price_dir == "DOWN":
+                alerts.append({
+                    "type":    "RESISTANCE_REJECTION",
+                    "signal":  "🔴 RESISTANCE REJECTION",
+                    "color":   "#ff5252",
+                    "bg":      "#ff525215",
+                    "bdr":     "#ff5252",
+                    "explain": (
+                        "Spot " + str(int(spot)) + " day high " + str(int(day_high)) +
+                        " se sirf " + str(int(dist_from_high)) + " pts neeche + price gir rahi = "
+                        "Resistance zone pe sellers active hain!"
+                    ),
+                    "action":  "PE khareedon — resistance hold ho raha hai"
+                })
+
+        # ── DOUBLE BOTTOM PATTERN ─────────────────────────────
+        if len(lows) >= 6:
+            recent_lows = sorted(lows[-6:])[:2]
+            if abs(recent_lows[0] - recent_lows[1]) < 30 and last_c > min(lows[-6:]) + 20:
+                alerts.append({
+                    "type":    "DOUBLE_BOTTOM",
+                    "signal":  "🔔 DOUBLE BOTTOM PATTERN",
+                    "color":   "#60a5fa",
+                    "bg":      "#60a5fa15",
+                    "bdr":     "#60a5fa",
+                    "explain": (
+                        "Price ne do baar " + str(int(min(lows[-6:]))) +
+                        " ke paas support liya aur bounce kiya = "
+                        "Strong reversal pattern — buyers defend kar rahe hain!"
+                    ),
+                    "action":  "CE khareedon — double bottom confirmed"
+                })
+
+        # ── CONFLICT ALERT — Dashboard vs Price ──────────────
+        oi_bearish = (call_oi_chg > 0 and put_oi_chg <= 0) or (pcr and pcr < 0.8)
+        oi_bullish = (put_oi_chg > 0 and call_oi_chg <= 0) or (pcr and pcr > 1.2)
+
+        if oi_bearish and price_dir == "UP":
+            alerts.append({
+                "type":    "CONFLICT",
+                "signal":  "⚡ OI vs PRICE CONFLICT",
+                "color":   "#ffd600",
+                "bg":      "#ffd60015",
+                "bdr":     "#ffd600",
+                "explain": (
+                    "OI data bearish signal de raha hai lekin price UPAR ja rahi hai. "
+                    "Yeh SHORT COVERING hai — bears force close kar rahe hain. "
+                    "Price action OI se zyada reliable hota hai intraday mein!"
+                ),
+                "action":  "Price action follow karo — OI data lagging hai"
+            })
+        elif oi_bullish and price_dir == "DOWN":
+            alerts.append({
+                "type":    "CONFLICT",
+                "signal":  "⚡ OI vs PRICE CONFLICT",
+                "color":   "#ffd600",
+                "bg":      "#ffd60015",
+                "bdr":     "#ffd600",
+                "explain": (
+                    "OI data bullish signal de raha hai lekin price NEECHE ja rahi hai. "
+                    "Yeh LONG UNWINDING hai — bulls force close kar rahe hain. "
+                    "Price action OI se zyada reliable hota hai intraday mein!"
+                ),
+                "action":  "Price action follow karo — OI data lagging hai"
+            })
+
+    except Exception as e:
+        print(f"[WARN] detect_market_reality: {e}")
+
+    return alerts
+
 def get_intraday_candles(token, instrument, interval="30minute"):
     """Intraday candles fetch karo — VWAP aur ATR ke liye"""
     try:
@@ -2592,6 +2741,97 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
+
+                # ══ MARKET REALITY DETECTOR ══════════════════
+                st.markdown("---")
+                st.markdown('<div class="sec-header" style="border-left:3px solid #f59e0b">🔍 Market Reality Detector — OI vs Price Action</div>', unsafe_allow_html=True)
+
+                try:
+                    # Fetch candles for reality check
+                    _mrd_instr  = "NSE_INDEX|Nifty 50" if name == "NIFTY" else ("NSE_INDEX|Nifty Bank" if "BANK" in name else "BSE_INDEX|SENSEX")
+                    _mrd_candles= safe_api_call(get_intraday_candles, token, _mrd_instr, "5minute", fallback=[])
+
+                    # Get PCR and OI change
+                    _mrd_pcr    = result.get("pcr", 0)
+                    _mrd_c_chg  = int(df_d["Call OI Change"].sum()) if "Call OI Change" in df_d.columns else 0
+                    _mrd_p_chg  = int(df_d["Put OI Change"].sum())  if "Put OI Change"  in df_d.columns else 0
+
+                    # Day range
+                    _mrd_instr_key = "NSE_INDEX|Nifty 50" if name == "NIFTY" else ("NSE_INDEX|Nifty Bank" if "BANK" in name else "BSE_INDEX|SENSEX")
+                    _mrd_high, _mrd_low, _, _ = extract_day_range(quote_data, _mrd_instr_key)
+
+                    _alerts = detect_market_reality(
+                        pcr         = _mrd_pcr,
+                        call_oi_chg = _mrd_c_chg,
+                        put_oi_chg  = _mrd_p_chg,
+                        candles     = _mrd_candles,
+                        spot        = spot,
+                        day_low     = _mrd_low,
+                        day_high    = _mrd_high,
+                        atm         = atm
+                    )
+
+                    if _alerts:
+                        for _al in _alerts:
+                            _ac  = _al["color"]
+                            _abg = _al["bg"]
+                            _abd = _al["bdr"]
+                            _aht  = '<div style="background:' + _abg + ';border:2px solid ' + _abd + ';border-radius:12px;padding:14px 18px;margin-bottom:10px">'
+                            _aht += '<div style="font-size:18px;font-weight:800;color:' + _ac + ';margin-bottom:6px">' + _al["signal"] + '</div>'
+                            _aht += '<div style="font-size:12px;color:#90b8d8;line-height:1.6;margin-bottom:8px">' + _al["explain"] + '</div>'
+                            _aht += '<div style="background:' + _ac + '20;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:700;color:' + _ac + '">👉 ' + _al["action"] + '</div>'
+                            _aht += '</div>'
+                            st.markdown(_aht, unsafe_allow_html=True)
+                    else:
+                        st.markdown(
+                            '<div style="background:#0d1929;border:1px solid rgba(29,78,216,0.2);border-radius:8px;padding:10px 14px;font-size:12px;color:#6495b8">'
+                            '✅ OI aur Price Action aligned hain — koi conflict nahi. Dashboard signal reliable hai.'
+                            '</div>',
+                            unsafe_allow_html=True
+                        )
+
+                    # Quick Price vs OI summary
+                    if _mrd_candles and len(_mrd_candles) >= 3:
+                        _cls   = [float(c[4]) for c in _mrd_candles[-5:]]
+                        _p_up  = sum(1 for i in range(1, len(_cls)) if _cls[i] > _cls[i-1])
+                        _p_dn  = sum(1 for i in range(1, len(_cls)) if _cls[i] < _cls[i-1])
+                        _p_dir = "⬆️ UP" if _p_up > _p_dn else ("⬇️ DOWN" if _p_dn > _p_up else "↔️ FLAT")
+                        _p_col = "#00e676" if _p_up > _p_dn else ("#ff5252" if _p_dn > _p_up else "#ffd600")
+
+                        _oi_dir  = "🟢 Bullish" if (_mrd_p_chg > 0 and _mrd_c_chg <= 0) else ("🔴 Bearish" if (_mrd_c_chg > 0 and _mrd_p_chg <= 0) else "🟡 Mixed")
+                        _oi_col  = "#00e676" if "Bullish" in _oi_dir else ("#ff5252" if "Bearish" in _oi_dir else "#ffd600")
+                        _aligned = (_p_up > _p_dn and "Bullish" in _oi_dir) or (_p_dn > _p_up and "Bearish" in _oi_dir)
+                        _align_s = "✅ Aligned" if _aligned else "⚡ Conflict!"
+                        _align_c = "#00e676" if _aligned else "#ffd600"
+
+                        sum_html  = '<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">'
+                        sum_html += '<div style="background:#0d1929;border:1px solid rgba(29,78,216,0.2);border-radius:8px;padding:8px 14px;flex:1;text-align:center">'
+                        sum_html += '<div style="font-size:10px;color:#6495b8;margin-bottom:3px">PRICE DIRECTION (5min)</div>'
+                        sum_html += '<div style="font-size:16px;font-weight:700;color:' + _p_col + '">' + _p_dir + '</div>'
+                        sum_html += '</div>'
+                        sum_html += '<div style="background:#0d1929;border:1px solid rgba(29,78,216,0.2);border-radius:8px;padding:8px 14px;flex:1;text-align:center">'
+                        sum_html += '<div style="font-size:10px;color:#6495b8;margin-bottom:3px">OI SIGNAL</div>'
+                        sum_html += '<div style="font-size:16px;font-weight:700;color:' + _oi_col + '">' + _oi_dir + '</div>'
+                        sum_html += '</div>'
+                        sum_html += '<div style="background:#0d1929;border:1px solid ' + _align_c + '40;border-radius:8px;padding:8px 14px;flex:1;text-align:center">'
+                        sum_html += '<div style="font-size:10px;color:#6495b8;margin-bottom:3px">STATUS</div>'
+                        sum_html += '<div style="font-size:16px;font-weight:700;color:' + _align_c + '">' + _align_s + '</div>'
+                        sum_html += '</div>'
+                        sum_html += '</div>'
+                        st.markdown(sum_html, unsafe_allow_html=True)
+
+                    st.markdown(
+                        '<div style="background:#0f1e35;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:11px;color:#6495b8">'
+                        '💡 <b style="color:#90b8d8">Rule:</b> '
+                        'PCR low + Price upar = Short Covering (Buy) | '
+                        'PCR high + Price neeche = Long Unwinding (Sell) | '
+                        'Price action hamesha OI se zyada fast hota hai!'
+                        '</div>',
+                        unsafe_allow_html=True
+                    )
+
+                except Exception as _mrd_e:
+                    st.markdown('<div style="font-size:11px;color:#6495b8;padding:6px">Reality detector: ' + str(_mrd_e) + '</div>', unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
