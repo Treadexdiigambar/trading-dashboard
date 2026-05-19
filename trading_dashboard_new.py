@@ -1848,8 +1848,14 @@ if not ltp_data and not quote_data:
     WiFi/Data check karo aur <b>Refresh</b> dabao.</span>
     </div>""", unsafe_allow_html=True)
     if auto_refresh:
-        time.sleep(5)
-        st.rerun()
+        # Non-blocking retry — 5 second baad JS se reload hoga
+        st.markdown("""
+        <script>
+            setTimeout(function() {
+                window.location.reload();
+            }, 5000);
+        </script>
+        """, unsafe_allow_html=True)
     st.stop()
 
 nifty_price     = extract_ltp(ltp_data, "NSE_INDEX|Nifty 50")
@@ -3086,109 +3092,28 @@ st.caption("⚠️ Sirf educational purpose. Trading apni responsibility par kar
 TRADE_JOURNAL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trade_journal.csv")
 TRADE_JOURNAL_FIELDS = ["id","date","symbol","expiry","strike","type","action","entry","exit","qty","pnl","pct","strategy","notes"]
 
-def _get_journal_path():
-    """Trade journal ke liye best available path find karo"""
-    # 1. Same folder jahan script hai
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    p1 = os.path.join(script_dir, "trade_journal.csv")
-    # 2. Home directory
-    p2 = os.path.expanduser("~/trade_journal.csv")
-    # 3. /tmp (last resort — session tak)
-    p3 = "/tmp/trade_journal.csv"
-
-    # Agar script_dir writable hai toh wahi use karo
-    try:
-        test = os.path.join(script_dir, ".write_test")
-        with open(test, "w") as f: f.write("ok")
-        os.remove(test)
-        return p1
-    except Exception:
-        pass
-
-    # Home directory try karo
-    try:
-        test = os.path.expanduser("~/.write_test")
-        with open(test, "w") as f: f.write("ok")
-        os.remove(test)
-        return p2
-    except Exception:
-        pass
-
-    return p3
-
-TRADE_JOURNAL_FILE = _get_journal_path()
-
 def load_trades():
-    """Trades load karo — multiple locations se try karo"""
-    # Primary location
-    if os.path.exists(TRADE_JOURNAL_FILE):
-        try:
-            trades = []
-            with open(TRADE_JOURNAL_FILE, "r") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    trades.append(row)
-            if trades:
-                return trades
-        except Exception as e:
-            print(f"[WARN] Trade journal load failed: {e}")
-
-    # Backup locations try karo
-    backup_paths = [
-        os.path.expanduser("~/trade_journal.csv"),
-        "/tmp/trade_journal.csv",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "trade_journal.csv"),
-    ]
-    for bp in backup_paths:
-        if bp != TRADE_JOURNAL_FILE and os.path.exists(bp):
-            try:
-                trades = []
-                with open(bp, "r") as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        trades.append(row)
-                if trades:
-                    print(f"[INFO] Trades loaded from backup: {bp}")
-                    # Primary location pe bhi save karo
-                    save_trades(trades)
-                    return trades
-            except Exception:
-                pass
-
-    # Session state se try karo
-    if "tj_backup_trades" in st.session_state and st.session_state["tj_backup_trades"]:
-        print("[INFO] Trades loaded from session state backup")
-        return st.session_state["tj_backup_trades"]
-
-    return []
+    if not os.path.exists(TRADE_JOURNAL_FILE):
+        return []
+    try:
+        trades = []
+        with open(TRADE_JOURNAL_FILE, "r") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                trades.append(row)
+        return trades
+    except Exception as e:
+        print(f"[WARN] Trade journal load failed: {e}")
+        return []
 
 def save_trades(trades):
-    """Trades save karo — multiple locations pe"""
-    # Session state mein hamesha backup rakho
-    st.session_state["tj_backup_trades"] = trades
-
-    # Primary location
     try:
         with open(TRADE_JOURNAL_FILE, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=TRADE_JOURNAL_FIELDS)
             writer.writeheader()
             writer.writerows(trades)
     except Exception as e:
-        print(f"[WARN] Trade journal save to primary failed: {e}")
-
-    # Backup locations pe bhi save karo
-    backup_paths = [
-        os.path.expanduser("~/trade_journal.csv"),
-    ]
-    for bp in backup_paths:
-        if bp != TRADE_JOURNAL_FILE:
-            try:
-                with open(bp, "w", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=TRADE_JOURNAL_FIELDS)
-                    writer.writeheader()
-                    writer.writerows(trades)
-            except Exception:
-                pass
+        print(f"[WARN] Trade journal save failed: {e}")
 
 def delete_trade_by_id(trade_id):
     trades = load_trades()
@@ -3197,32 +3122,6 @@ def delete_trade_by_id(trade_id):
 
 st.markdown("---")
 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📓 Trade Journal</div>', unsafe_allow_html=True)
-
-# ── Import existing CSV ────────────────────────────────────────
-with st.expander("📥 Purana Data Import Karo (CSV Upload)"):
-    st.markdown('<div style="font-size:12px;color:#6495b8;margin-bottom:8px">Agar aapka purana trade_journal.csv hai toh yahan upload karo — data restore ho jaayega</div>', unsafe_allow_html=True)
-    uploaded_tj = st.file_uploader("trade_journal.csv upload karo", type=["csv"], key="tj_upload")
-    if uploaded_tj:
-        try:
-            import io
-            content = uploaded_tj.read().decode("utf-8")
-            reader  = csv.DictReader(io.StringIO(content))
-            imp_trades = [row for row in reader if row.get("id")]
-            if imp_trades:
-                existing = load_trades()
-                existing_ids = {t["id"] for t in existing}
-                new_trades = [t for t in imp_trades if t["id"] not in existing_ids]
-                all_merged = imp_trades  # Replace with imported (latest)
-                save_trades(all_merged)
-                st.success(f"✅ {len(all_merged)} trades import ho gaye!")
-                st.rerun()
-            else:
-                st.error("File mein koi trade nahi mila")
-        except Exception as _ue:
-            st.error(f"Import failed: {_ue}")
-
-    # Show current file path
-    st.markdown(f'<div style="font-size:10px;color:#4e7a96;margin-top:6px">💾 Current save path: <b>{TRADE_JOURNAL_FILE}</b></div>', unsafe_allow_html=True)
 
 # ── Stats ─────────────────────────────────────────────────────
 all_trades = load_trades()
@@ -3344,67 +3243,34 @@ with st.expander("➕ Trade Form Kholein", expanded=False):
 # ── Trade History Table ────────────────────────────────────────
 st.markdown('<div style="font-size:11px;color:#6495b8;letter-spacing:2px;text-transform:uppercase;margin:14px 0 8px">📋 Trade History</div>', unsafe_allow_html=True)
 
-# ── Dropdown Filters ───────────────────────────────────────────
-tf_c1, tf_c2, tf_c3 = st.columns([2, 2, 3])
-with tf_c1:
-    date_filter = st.selectbox(
-        "📅 Date Filter",
-        ["All Time", "Aaj", "Kal", "Is Hafte", "Pichla Hafta", "Is Mahine", "Custom Date"],
-        key="tj_date_filter"
-    )
-with tf_c2:
-    result_filter = st.selectbox(
-        "📊 Result Filter",
-        ["Sab", "Profit Only", "Loss Only"],
-        key="tj_result_filter"
-    )
-with tf_c3:
-    if date_filter == "Custom Date":
-        custom_date = st.date_input("Date chuno", value=date.today(), key="tj_custom_date")
-    else:
-        custom_date = None
+# Filter buttons
+tj_filter_col1, tj_filter_col2, tj_filter_col3, tj_filter_col4, tj_filter_col5 = st.columns([1,1,1,1,4])
+with tj_filter_col1:
+    show_all    = st.button("All", key="tjf_all",    use_container_width=True)
+with tj_filter_col2:
+    show_profit = st.button("✅ Profit", key="tjf_profit", use_container_width=True)
+with tj_filter_col3:
+    show_loss   = st.button("❌ Loss",   key="tjf_loss",   use_container_width=True)
+with tj_filter_col4:
+    show_today  = st.button("📅 Aaj",   key="tjf_today",  use_container_width=True)
 
-# ── Apply Filters ──────────────────────────────────────────────
+# Filter state
+if "tj_filter" not in st.session_state:
+    st.session_state.tj_filter = "all"
+if show_all:    st.session_state.tj_filter = "all"
+if show_profit: st.session_state.tj_filter = "profit"
+if show_loss:   st.session_state.tj_filter = "loss"
+if show_today:  st.session_state.tj_filter = "today"
+
+# Apply filter
 display_trades = load_trades()
-today_dt  = date.today()
-
-# Date filter
-if date_filter == "Aaj":
-    display_trades = [t for t in display_trades if t.get("date","") == str(today_dt)]
-elif date_filter == "Kal":
-    kal_dt = str(today_dt - timedelta(days=1))
-    display_trades = [t for t in display_trades if t.get("date","") == kal_dt]
-elif date_filter == "Is Hafte":
-    week_start = str(today_dt - timedelta(days=today_dt.weekday()))
-    display_trades = [t for t in display_trades if t.get("date","") >= week_start]
-elif date_filter == "Pichla Hafta":
-    this_week_start  = today_dt - timedelta(days=today_dt.weekday())
-    last_week_start  = str(this_week_start - timedelta(days=7))
-    last_week_end    = str(this_week_start - timedelta(days=1))
-    display_trades = [t for t in display_trades if last_week_start <= t.get("date","") <= last_week_end]
-elif date_filter == "Is Mahine":
-    month_str = today_dt.strftime("%Y-%m")
-    display_trades = [t for t in display_trades if t.get("date","").startswith(month_str)]
-elif date_filter == "Custom Date" and custom_date:
-    display_trades = [t for t in display_trades if t.get("date","") == str(custom_date)]
-
-# Result filter
-if result_filter == "Profit Only":
-    display_trades = [t for t in display_trades if float(t.get("pnl", 0)) >= 0]
-elif result_filter == "Loss Only":
-    display_trades = [t for t in display_trades if float(t.get("pnl", 0)) < 0]
-
-# Filter summary
-_f_count = len(display_trades)
-_f_pnl   = sum(float(t.get("pnl",0)) for t in display_trades)
-_f_col   = "#00e676" if _f_pnl >= 0 else "#ff5252"
-st.markdown(
-    '<div style="display:flex;gap:12px;margin-bottom:8px;font-size:12px;flex-wrap:wrap">'
-    '<span style="color:#6495b8">Filtered: <b style="color:#60a5fa">' + str(_f_count) + ' trades</b></span>'
-    '<span style="color:#6495b8">Total P&L: <b style="color:' + _f_col + '">₹' + f"{_f_pnl:,.0f}" + '</b></span>'
-    '</div>',
-    unsafe_allow_html=True
-)
+if st.session_state.tj_filter == "profit":
+    display_trades = [t for t in display_trades if float(t["pnl"]) >= 0]
+elif st.session_state.tj_filter == "loss":
+    display_trades = [t for t in display_trades if float(t["pnl"]) < 0]
+elif st.session_state.tj_filter == "today":
+    today_str_tj = str(date.today())
+    display_trades = [t for t in display_trades if t["date"] == today_str_tj]
 
 if not display_trades:
     st.markdown('<div style="background:#0f1e3580;border:1px solid #1d4ed830;border-radius:8px;padding:20px;text-align:center;color:#6495b8;font-size:13px">Koi trade nahi mila — upar form se add karo</div>', unsafe_allow_html=True)
@@ -3573,5 +3439,12 @@ else:
     """, unsafe_allow_html=True)
 
 if auto_refresh:
-    time.sleep(3)
-    st.rerun()
+    # time.sleep() hata diya — main thread block nahi hoga
+    # JavaScript se 3-second ke baad page reload hoga (non-blocking)
+    st.markdown("""
+    <script>
+        setTimeout(function() {
+            window.location.reload();
+        }, 3000);
+    </script>
+    """, unsafe_allow_html=True)
