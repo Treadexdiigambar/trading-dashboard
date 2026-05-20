@@ -1875,16 +1875,20 @@ def render_smart_signal_ui(name, spot, result):
     w = sig["w_data"]
     w_info = ""
     if w.get("detected"):
-        hl_col  = "#00e676" if w.get("higher_low") else "#f59e0b"
-        hl_text = "Higher low ✅" if w.get("higher_low") else "Equal/lower low ⚠️"
-        w_info  = f"""
-        <div style="margin-top:8px;padding:8px 12px;background:rgba(29,78,216,0.08);
-             border-radius:8px;font-size:11px;color:#90b8d8;display:flex;gap:16px;flex-wrap:wrap">
-          <span>W Low: <b style="color:#ff5252">{w.get("w_low","—"):,.0f}</b></span>
-          <span>Mid High: <b style="color:#e8f4ff">{w.get("middle_high","—"):,.0f}</b></span>
-          <span>Entry trigger: <b style="color:#00e676">{w.get("entry_trigger","—"):,.0f}</b></span>
-          <span style="color:{hl_col}">{hl_text}</span>
-        </div>"""
+        hl_col   = "#00e676" if w.get("higher_low") else "#f59e0b"
+        hl_text  = "Higher low ✅" if w.get("higher_low") else "Equal/lower low ⚠️"
+        w_low_v  = f'{w.get("w_low", 0):,.0f}' if w.get("w_low") else "—"
+        w_mid_v  = f'{w.get("middle_high", 0):,.0f}' if w.get("middle_high") else "—"
+        w_trig_v = f'{w.get("entry_trigger", 0):,.0f}' if w.get("entry_trigger") else "—"
+        w_info   = (
+            '<div style="margin-top:8px;padding:8px 12px;background:rgba(29,78,216,0.08);' +
+            'border-radius:8px;font-size:11px;color:#90b8d8;display:flex;gap:16px;flex-wrap:wrap">' +
+            f'<span>W Low: <b style="color:#ff5252">{w_low_v}</b></span>' +
+            f'<span>Mid High: <b style="color:#e8f4ff">{w_mid_v}</b></span>' +
+            f'<span>Entry trigger: <b style="color:#00e676">{w_trig_v}</b></span>' +
+            f'<span style="color:{hl_col}">{hl_text}</span>' +
+            '</div>'
+        )
 
     w_status = "✅ W Confirmed" if sig["w_confirmed"] else ("⏳ W Bana — trigger wait" if w.get("detected") else "❌ W Nahi Bana")
     w_col    = "#00e676" if sig["w_confirmed"] else ("#a78bfa" if w.get("detected") else "#ff5252")
