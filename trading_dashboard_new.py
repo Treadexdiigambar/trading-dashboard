@@ -2146,6 +2146,13 @@ token = st.session_state.access_token
 # ── Auto refresh always ON — no checkbox ─────────────────────
 auto_refresh = True  # Always ON — 3 second refresh
 
+# ── Non-blocking auto refresh — streamlit_autorefresh use karo ──
+try:
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=3000, limit=None, key="main_autorefresh")
+except ImportError:
+    pass  # Library nahi hai toh ignore karo — manual refresh karo
+
 # Buttons row
 col_r1, col_terminal, col_r4, col_r5 = st.columns([4, 2, 2, 2])
 with col_r4:
@@ -2252,8 +2259,7 @@ if not ltp_data and not quote_data:
     WiFi/Data check karo aur <b>Refresh</b> dabao.</span>
     </div>""", unsafe_allow_html=True)
     if auto_refresh:
-        import time as _time
-        _time.sleep(5)
+        time.sleep(5)
         st.rerun()
     st.stop()
 
@@ -3844,7 +3850,4 @@ else:
     <style>.block-container {{ padding-bottom: 50px !important; }}</style>
     """, unsafe_allow_html=True)
 
-if auto_refresh:
-    import time as _time
-    _time.sleep(3)
-    st.rerun()
+# Auto refresh upar handle ho gaya (st_autorefresh) — yahan kuch nahi chahiye
