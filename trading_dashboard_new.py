@@ -609,6 +609,8 @@ for key, val in [
     ("cache_timestamp",  ""),
     ("oi_wall_ticker",   []),   # [{name, resistance, res_oi, support, sup_oi, updated}]
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
+    # ── Breakout Range Tracking ──
+    ("breakout_ranges", {}),    # {name: {high, low, buffer, prev_signal, prev_price}}
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -1564,6 +1566,404 @@ def sentiment_label(pcr):
     elif pcr >= 0.6: return "🔴 BEARISH", "bearish"
     else: return "🔴 STRONG BEARISH", "bearish"
 
+# ══════════════════════════════════════════════════════════════
+# 🎯 SMART ENTRY SIGNAL SYSTEM
+# W Pattern + Key Level + OI + PCR + Market Structure
+# ══════════════════════════════════════════════════════════════
+
+def detect_w_pattern(spot, key_level, prev_prices):
+    """
+    W Pattern detect karo:
+    - Price key_level pe aaya (first bottom)
+    - Thoda upar gaya (middle peak)
+    - Wapas key_level ke paas aaya (second bottom — higher than first)
+    - Middle peak toot gaya → W confirm → BUY ENTRY
+
+    prev_prices: list of recent prices (latest last)
+    Returns: {"detected": bool, "entry_trigger": float, "w_low": float, "middle_high": float}
+    """
+    if not prev_prices or len(prev_prices) < 5:
+        return {"detected": False}
+
+    prices = prev_prices[-20:]  # last 20 readings use karo
+    n = len(prices)
+
+    # Key level ke paas = within 0.2% (loose enough for real data)
+    tolerance = key_level * 0.002
+
+    # Find two bottoms near key_level and one peak in between
+    bottoms = []
+    peaks   = []
+
+    for i in range(1, n - 1):
+        if prices[i] <= prices[i-1] and prices[i] <= prices[i+1]:
+            if abs(prices[i] - key_level) <= tolerance * 3:
+                bottoms.append((i, prices[i]))
+        if prices[i] >= prices[i-1] and prices[i] >= prices[i+1]:
+            peaks.append((i, prices[i]))
+
+    # Need at least 2 bottoms and 1 peak between them
+    if len(bottoms) < 2:
+        return {"detected": False}
+
+    b1_idx, b1_price = bottoms[0]
+    b2_idx, b2_price = bottoms[-1]
+
+    # Peak between the two bottoms
+    mid_peaks = [(i, p) for i, p in peaks if b1_idx < i < b2_idx]
+    if not mid_peaks:
+        return {"detected": False}
+
+    mid_peak_idx, mid_peak_price = max(mid_peaks, key=lambda x: x[1])
+
+    # Second bottom should be higher than or equal to first (higher low = stronger)
+    higher_low = b2_price >= b1_price - tolerance
+
+    # Entry trigger = middle peak price (W ka neckline)
+    entry_trigger = mid_peak_price
+    w_confirmed   = spot >= entry_trigger  # current price ne trigger toda
+
+    return {
+        "detected":      True,
+        "confirmed":     w_confirmed,
+        "entry_trigger": round(entry_trigger, 2),
+        "w_low":         round(min(b1_price, b2_price), 2),
+        "middle_high":   round(mid_peak_price, 2),
+        "higher_low":    higher_low,
+        "b1":            round(b1_price, 2),
+        "b2":            round(b2_price, 2),
+    }
+
+
+def calculate_smart_signal(name, spot, key_level, oi_result, pcr, prev_prices):
+    """
+    Poora signal system — sab factors ek jagah:
+
+    Score system (5 points):
+    1. W Pattern detected + confirmed  → 2 pts  (mandatory — bina iske no trade)
+    2. Key Level confluence            → 1 pt
+    3. OI confirmation (Call OI ghat) → 1 pt
+    4. PCR bullish (>= 1.0)           → 1 pt
+
+    Minimum 3/5 chahiye entry ke liye.
+    W Pattern mandatory hai.
+    """
+    if not spot or not key_level:
+        return None
+
+    score       = 0
+    factors     = []
+    w_data      = detect_w_pattern(spot, key_level, prev_prices or [])
+
+    # ── Factor 1 & 2: W Pattern (2 pts) ─────────────────────
+    w_detected   = w_data.get("detected", False)
+    w_confirmed  = w_data.get("confirmed", False)
+    higher_low   = w_data.get("higher_low", False)
+    entry_trigger = w_data.get("entry_trigger", key_level)
+
+    if w_detected and w_confirmed:
+        score += 2
+        factors.append(("✅", "W Pattern", "Confirm — neckline toot gaya", 2))
+    elif w_detected:
+        score += 1
+        factors.append(("⏳", "W Pattern", f"Bana hai — entry trigger {entry_trigger:,.0f} ka wait karo", 1))
+    else:
+        factors.append(("❌", "W Pattern", "Abhi nahi bana — wait karo", 0))
+
+    # ── Factor 3: Key Level (1 pt) ───────────────────────────
+    tolerance = key_level * 0.002
+    near_level = abs(spot - key_level) <= tolerance * 5
+    if near_level:
+        score += 1
+        factors.append(("✅", "Key Level", f"{key_level:,.0f} pe price support le raha hai", 1))
+    else:
+        factors.append(("❌", "Key Level", f"Price key level {key_level:,.0f} se door hai", 0))
+
+    # ── Factor 4: OI Confirmation (1 pt) ─────────────────────
+    oi_confirm_text = ""
+    if oi_result:
+        atm_call_chg = oi_result.get("atm_call_chg", 0) or 0
+        atm_put_chg  = oi_result.get("atm_put_chg",  0) or 0
+        if atm_call_chg < 0:
+            score += 1
+            oi_confirm_text = f"Call OI ghat raha ({atm_call_chg:+,.0f}) — short covering"
+            factors.append(("✅", "OI Confirm", oi_confirm_text, 1))
+        elif atm_put_chg > 0:
+            score += 1
+            oi_confirm_text = f"Put OI badh raha ({atm_put_chg:+,.0f}) — buyers protection"
+            factors.append(("✅", "OI Confirm", oi_confirm_text, 1))
+        else:
+            factors.append(("❌", "OI Confirm", "Call OI nahi ghat raha — weak confirm", 0))
+    else:
+        factors.append(("⚠️", "OI Confirm", "OI data load nahi hua", 0))
+
+    # ── Factor 5: PCR (1 pt) ─────────────────────────────────
+    if pcr and pcr >= 1.0:
+        score += 1
+        factors.append(("✅", "PCR Ratio", f"PCR {pcr:.2f} — bullish sentiment", 1))
+    elif pcr and pcr >= 0.8:
+        factors.append(("⚠️", "PCR Ratio", f"PCR {pcr:.2f} — neutral, strong nahi", 0))
+    else:
+        factors.append(("❌", "PCR Ratio", f"PCR {pcr:.2f} — bearish sentiment" if pcr else "PCR data nahi", 0))
+
+    # ── Final Signal ─────────────────────────────────────────
+    pct          = round(score / 5 * 100)
+    w_mandatory  = w_detected  # W bina entry nahi
+
+    if score >= 4 and w_mandatory and w_confirmed:
+        signal = "BUY NOW"
+        color  = "#00e676"
+        icon   = "🚀"
+        grade  = "A+"
+    elif score >= 3 and w_mandatory and w_confirmed:
+        signal = "BUY"
+        color  = "#00e676"
+        icon   = "✅"
+        grade  = "A"
+    elif score >= 3 and w_mandatory and not w_confirmed:
+        signal = "PREPARE"
+        color  = "#a78bfa"
+        icon   = "🎯"
+        grade  = "B"
+    elif score >= 2:
+        signal = "WATCH"
+        color  = "#f59e0b"
+        icon   = "👀"
+        grade  = "C"
+    else:
+        signal = "WAIT"
+        color  = "#6495b8"
+        icon   = "⏸️"
+        grade  = "D"
+
+    # SL aur Target
+    w_low    = w_data.get("w_low", key_level - 50)
+    sl       = w_low - 10  # W ke low se thoda neeche
+    target   = key_level + (key_level - sl) * 2  # 2:1 R:R minimum
+    risk     = spot - sl
+    reward   = target - spot
+    rr       = round(reward / risk, 1) if risk > 0 else 0
+
+    return {
+        "signal":   signal,
+        "color":    color,
+        "icon":     icon,
+        "grade":    grade,
+        "score":    score,
+        "pct":      pct,
+        "factors":  factors,
+        "w_data":   w_data,
+        "sl":       round(sl, 0),
+        "target":   round(target, 0),
+        "rr":       rr,
+        "entry":    round(entry_trigger, 0),
+        "w_mandatory": w_mandatory,
+        "w_confirmed": w_confirmed,
+    }
+
+
+def render_smart_signal_ui(name, spot, result):
+    """
+    Smart Entry Signal UI — ek jagah sab kuch:
+    W Pattern + Key Level + OI + PCR + Score + Trade Setup
+    """
+    rk = "smart_signal_state"
+    if rk not in st.session_state:
+        st.session_state[rk] = {}
+    saved = st.session_state[rk].get(name, {})
+
+    st.markdown(
+        f'''<div class="sec-header" style="border-left:3px solid #a78bfa">
+        🎯 Smart Entry Signal — {name}
+        </div>''',
+        unsafe_allow_html=True
+    )
+
+    # ── Key Level input ───────────────────────────────────────
+    default_level = int(result["resistance_levels"][0]) if result.get("resistance_levels") else (round(spot / 50) * 50 if spot else 0)
+    # Nearest round 50 to spot
+    nearest_50    = round(spot / 50) * 50 if spot else default_level
+
+    sc1, sc2 = st.columns([2, 3])
+    with sc1:
+        key_level = st.number_input(
+            "🎯 Key Level (W pattern jahan bana)",
+            min_value=0, max_value=200000,
+            value=saved.get("key_level", nearest_50),
+            step=50, key=f"sl_key_{name}",
+            help="Jis price pe W pattern bana hai woh level — usually round number"
+        )
+    with sc2:
+        # Price history save karo for W detection
+        ph_key = f"price_hist_{name}"
+        if ph_key not in st.session_state:
+            st.session_state[ph_key] = []
+        if spot and (not st.session_state[ph_key] or st.session_state[ph_key][-1] != spot):
+            st.session_state[ph_key].append(spot)
+            st.session_state[ph_key] = st.session_state[ph_key][-50:]  # last 50 readings
+
+        hist_count = len(st.session_state[ph_key])
+        st.markdown(f"""
+        <div style="background:#0d1929;border-radius:8px;padding:10px 14px;margin-top:24px;
+             border:1px solid rgba(29,78,216,0.15);font-size:12px;color:#6495b8">
+          📊 Price history: <b style="color:#e8f4ff">{hist_count} readings</b> collected
+          &nbsp;|&nbsp; Current spot: <b style="color:#00bfff">{spot:,.2f}</b>
+          &nbsp;|&nbsp; Key level: <b style="color:#a78bfa">{key_level:,}</b>
+        </div>""", unsafe_allow_html=True)
+
+    # Save
+    st.session_state[rk][name] = {"key_level": key_level}
+
+    # ── Calculate signal ─────────────────────────────────────
+    pcr    = result.get("pcr", 0)
+    sig    = calculate_smart_signal(
+        name, spot, key_level, result,
+        pcr, st.session_state.get(ph_key, [])
+    )
+    if not sig:
+        st.warning("Data insufficient.")
+        return
+
+    # ── Score bar ────────────────────────────────────────────
+    score_color = "#00e676" if sig["score"] >= 4 else ("#f59e0b" if sig["score"] >= 3 else "#ff5252")
+    bar_w       = sig["score"] * 20  # 5 pts = 100%
+
+    st.markdown(f"""
+    <div style="margin:12px 0 6px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#6495b8;margin-bottom:5px">
+        <span>Probability Score</span>
+        <span style="color:{score_color};font-weight:700">{sig["score"]}/5 — {sig["pct"]}%</span>
+      </div>
+      <div style="background:#0a1220;border-radius:6px;height:12px;overflow:hidden;border:1px solid rgba(29,78,216,0.2)">
+        <div style="width:{bar_w}%;background:linear-gradient(90deg,#1D9E75,{score_color});height:100%;border-radius:6px;transition:width 0.5s"></div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── 4 Factor cards ────────────────────────────────────────
+    cols = st.columns(4)
+    factor_labels = ["W Pattern", "Key Level", "OI Confirm", "PCR Ratio"]
+    for i, (emoji, label, detail, pts) in enumerate(sig["factors"]):
+        fc = "#00e676" if pts > 0 else ("#f59e0b" if emoji == "⚠️" else "#ff5252")
+        bg = f"rgba(0,230,118,0.07)" if pts > 0 else "rgba(255,82,82,0.05)"
+        with cols[i]:
+            st.markdown(f"""
+            <div style="background:{bg};border:1px solid {fc}30;border-radius:10px;
+                 padding:10px 12px;height:100%;min-height:90px">
+              <div style="font-size:18px;margin-bottom:4px">{emoji}</div>
+              <div style="font-size:11px;font-weight:700;color:{fc};letter-spacing:1px;
+                   text-transform:uppercase">{label}</div>
+              <div style="font-size:10px;color:#8ab8d8;margin-top:4px;line-height:1.4">{detail}</div>
+              <div style="font-size:10px;color:{fc};margin-top:6px;font-weight:700">
+                {pts} pt{"s" if pts != 1 else ""}</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Main signal card ─────────────────────────────────────
+    sig_bg = {
+        "BUY NOW": "rgba(0,230,118,0.10)",
+        "BUY":     "rgba(0,230,118,0.07)",
+        "PREPARE": "rgba(167,139,250,0.07)",
+        "WATCH":   "rgba(245,158,11,0.07)",
+        "WAIT":    "rgba(100,149,184,0.04)",
+    }.get(sig["signal"], "rgba(100,149,184,0.04)")
+
+    border_w = "2px" if sig["signal"] in ("BUY NOW", "BUY") else "1px"
+
+    # W data display
+    w = sig["w_data"]
+    w_info = ""
+    if w.get("detected"):
+        hl_col  = "#00e676" if w.get("higher_low") else "#f59e0b"
+        hl_text = "Higher low ✅" if w.get("higher_low") else "Equal/lower low ⚠️"
+        w_info  = f"""
+        <div style="margin-top:8px;padding:8px 12px;background:rgba(29,78,216,0.08);
+             border-radius:8px;font-size:11px;color:#90b8d8;display:flex;gap:16px;flex-wrap:wrap">
+          <span>W Low: <b style="color:#ff5252">{w.get("w_low","—"):,.0f}</b></span>
+          <span>Mid High: <b style="color:#e8f4ff">{w.get("middle_high","—"):,.0f}</b></span>
+          <span>Entry trigger: <b style="color:#00e676">{w.get("entry_trigger","—"):,.0f}</b></span>
+          <span style="color:{hl_col}">{hl_text}</span>
+        </div>"""
+
+    w_status = "✅ W Confirmed" if sig["w_confirmed"] else ("⏳ W Bana — trigger wait" if w.get("detected") else "❌ W Nahi Bana")
+    w_col    = "#00e676" if sig["w_confirmed"] else ("#a78bfa" if w.get("detected") else "#ff5252")
+
+    st.markdown(f"""
+    <div style="background:{sig_bg};border:{border_w} solid {sig["color"]}50;
+         border-radius:14px;padding:18px 22px;margin:4px 0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:11px;color:#6495b8;letter-spacing:2px;
+               text-transform:uppercase;margin-bottom:4px">{name} — Smart Entry</div>
+          <div style="font-size:40px;font-weight:900;color:{sig["color"]};line-height:1">
+            {sig["icon"]} {sig["signal"]}
+          </div>
+          <div style="margin-top:6px">
+            <span style="color:{w_col};font-size:13px;font-weight:700">{w_status}</span>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:#6495b8">Grade</div>
+          <div style="font-size:32px;font-weight:900;color:{sig["color"]}">{sig["grade"]}</div>
+          <div style="font-size:11px;color:#6495b8;margin-top:4px">Min required: 3/5</div>
+          <div style="font-size:12px;color:{"#00e676" if sig["score"]>=3 else "#ff5252"};font-weight:700">
+            {"✅ Entry valid" if sig["score"]>=3 and sig["w_confirmed"] else "❌ Entry nahi"}
+          </div>
+        </div>
+      </div>
+      {w_info}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Trade Setup (sirf BUY/BUY NOW pe) ────────────────────
+    if sig["signal"] in ("BUY NOW", "BUY") and sig["w_confirmed"]:
+        sl_pts  = round(spot - sig["sl"])
+        tgt_pts = round(sig["target"] - spot)
+        rr_col  = "#00e676" if sig["rr"] >= 2 else "#f59e0b"
+
+        st.markdown(f"""
+        <div style="border:1.5px solid {sig["color"]}60;border-radius:12px;
+             padding:14px 18px;margin:8px 0;background:rgba(0,0,0,0.2)">
+          <div style="font-size:11px;color:#a78bfa;font-weight:700;
+               letter-spacing:2px;text-transform:uppercase;margin-bottom:10px">
+            📋 Trade Setup
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
+            <div style="background:rgba(29,78,216,0.1);border-radius:8px;padding:10px">
+              <div style="font-size:10px;color:#6495b8;margin-bottom:4px">ENTRY</div>
+              <div style="font-size:22px;font-weight:900;color:#00e676">{sig["entry"]:,.0f}</div>
+              <div style="font-size:10px;color:#6495b8">W neckline break</div>
+            </div>
+            <div style="background:rgba(255,82,82,0.08);border-radius:8px;padding:10px">
+              <div style="font-size:10px;color:#6495b8;margin-bottom:4px">STOP LOSS</div>
+              <div style="font-size:22px;font-weight:900;color:#ff5252">{sig["sl"]:,.0f}</div>
+              <div style="font-size:10px;color:#ff525280">−{sl_pts} pts</div>
+            </div>
+            <div style="background:rgba(0,230,118,0.08);border-radius:8px;padding:10px">
+              <div style="font-size:10px;color:#6495b8;margin-bottom:4px">TARGET</div>
+              <div style="font-size:22px;font-weight:900;color:#00e676">{sig["target"]:,.0f}</div>
+              <div style="font-size:10px;color:#00e67680">+{tgt_pts} pts</div>
+            </div>
+            <div style="background:rgba(167,139,250,0.08);border-radius:8px;padding:10px">
+              <div style="font-size:10px;color:#6495b8;margin-bottom:4px">RISK:REWARD</div>
+              <div style="font-size:22px;font-weight:900;color:{rr_col}">1:{sig["rr"]}</div>
+              <div style="font-size:10px;color:{rr_col}80">{"Good ✅" if sig["rr"]>=2 else "Low ⚠️"}</div>
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Notification ─────────────────────────────────────────
+    prev_sig = saved.get("prev_signal", "")
+    if sig["signal"] != prev_sig and sig["signal"] in ("BUY NOW", "BUY"):
+        add_notification(
+            "smart_signal",
+            f"{name} {sig['signal']}! Score {sig['score']}/5",
+            f"Grade {sig['grade']} | Entry: {sig['entry']:,.0f} | SL: {sig['sl']:,.0f} | Target: {sig['target']:,.0f}"
+        )
+        st.session_state[rk][name]["prev_signal"] = sig["signal"]
+
 def fv_option_status(d):
     """
     Fair value option status
@@ -1848,14 +2248,9 @@ if not ltp_data and not quote_data:
     WiFi/Data check karo aur <b>Refresh</b> dabao.</span>
     </div>""", unsafe_allow_html=True)
     if auto_refresh:
-        # Non-blocking retry — 5 second baad JS se reload hoga
-        st.markdown("""
-        <script>
-            setTimeout(function() {
-                window.location.reload();
-            }, 5000);
-        </script>
-        """, unsafe_allow_html=True)
+        import time as _time
+        _time.sleep(5)
+        st.rerun()
     st.stop()
 
 nifty_price     = extract_ltp(ltp_data, "NSE_INDEX|Nifty 50")
@@ -2187,6 +2582,13 @@ for tab, instrument, name, spot in [
                 s_oi_str = f'<span style="font-size:11px;color:#00e67680;margin-left:8px">{int(s_oi[0]):,} OI</span>' if len(s_oi) > 0 else ""
                 st.markdown(f'<div class="key-level-support">🟢 {s_int:,}{s_oi_str}</div>', unsafe_allow_html=True)
 
+        st.markdown("---")
+
+        # ══════════════════════════════════════════════
+        # 🚀 BREAKOUT / BREAKDOWN SIGNAL
+        # ══════════════════════════════════════════════
+        if spot:
+            render_smart_signal_ui(name, spot, result)
         st.markdown("---")
 
         # ══════════════════════════════════════════════
@@ -3439,12 +3841,6 @@ else:
     """, unsafe_allow_html=True)
 
 if auto_refresh:
-    # time.sleep() hata diya — main thread block nahi hoga
-    # JavaScript se 3-second ke baad page reload hoga (non-blocking)
-    st.markdown("""
-    <script>
-        setTimeout(function() {
-            window.location.reload();
-        }, 3000);
-    </script>
-    """, unsafe_allow_html=True)
+    import time as _time
+    _time.sleep(3)
+    st.rerun()
