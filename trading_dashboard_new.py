@@ -2146,12 +2146,8 @@ token = st.session_state.access_token
 # ── Auto refresh always ON — no checkbox ─────────────────────
 auto_refresh = True  # Always ON — 3 second refresh
 
-# ── Non-blocking auto refresh — streamlit_autorefresh use karo ──
-try:
-    from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=3000, limit=None, key="main_autorefresh")
-except ImportError:
-    pass  # Library nahi hai toh ignore karo — manual refresh karo
+# ── Auto refresh — pure HTML meta refresh, koi library nahi chahiye ──
+st.markdown('<meta http-equiv="refresh" content="3">', unsafe_allow_html=True)
 
 # Buttons row
 col_r1, col_terminal, col_r4, col_r5 = st.columns([4, 2, 2, 2])
