@@ -2144,10 +2144,23 @@ if not st.session_state.access_token:
 token = st.session_state.access_token
 
 # ── Auto refresh always ON — no checkbox ─────────────────────
-auto_refresh = True  # Always ON — 3 second refresh
+# ── Auto refresh — sirf market hours mein (9:15 AM to 3:30 PM IST) ──
+try:
+    from zoneinfo import ZoneInfo
+    _ist = ZoneInfo("Asia/Kolkata")
+except Exception:
+    import pytz
+    _ist = pytz.timezone("Asia/Kolkata")
 
-# ── Auto refresh — pure HTML meta refresh, koi library nahi chahiye ──
-st.markdown('<meta http-equiv="refresh" content="3">', unsafe_allow_html=True)
+_now_ist   = datetime.now(_ist)
+_weekday   = _now_ist.weekday()          # 0=Mon, 6=Sun
+_hour      = _now_ist.hour
+_minute    = _now_ist.minute
+_market_open  = (_hour > 9) or (_hour == 9 and _minute >= 15)
+_market_close = (_hour > 15) or (_hour == 15 and _minute >= 30)
+_is_weekday   = _weekday < 5
+
+auto_refresh = _is_weekday and _market_open and not _market_close
 
 # Buttons row
 col_r1, col_terminal, col_r4, col_r5 = st.columns([4, 2, 2, 2])
@@ -3846,4 +3859,6 @@ else:
     <style>.block-container {{ padding-bottom: 50px !important; }}</style>
     """, unsafe_allow_html=True)
 
-# Auto refresh upar handle ho gaya (st_autorefresh) — yahan kuch nahi chahiye
+if auto_refresh:
+    time.sleep(3)
+    st.rerun()
