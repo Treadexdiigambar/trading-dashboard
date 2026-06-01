@@ -2440,7 +2440,7 @@ st.markdown("---")
 # ANALYSIS TABS
 # ══════════════════════════════════════════════════════════════
 
-tab1, tab2, tab3 = st.tabs(["📊 NIFTY Analysis", "🏦 BANK NIFTY Analysis", "📈 SENSEX Analysis"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 NIFTY Analysis", "🏦 BANK NIFTY Analysis", "📈 SENSEX Analysis", "🔥 Order Flow Heatmap"])
 
 # ── SENSEX Tab — dedicated section (BSE pe options nahi hote) ──
 for tab, instrument, name, spot in [
@@ -3506,6 +3506,306 @@ else:
 
 st.markdown("---")
 st.caption("⚠️ Sirf educational purpose. Trading apni responsibility par karein.")
+
+# ══════════════════════════════════════════════════════════════
+# 🔥 ORDER FLOW HEATMAP TAB
+# ══════════════════════════════════════════════════════════════
+with tab4:
+    st.markdown("""
+    <div style="background:#0d1929;border-radius:10px;padding:12px 18px;margin-bottom:14px;
+                border:1px solid rgba(255,150,0,0.25);border-left:4px solid #ff9500">
+      <div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">
+        🔥 Order Flow Heatmap — Candle by Candle
+      </div>
+      <div style="font-size:13px;color:#a8ccdf">
+        Har candle mein Buy/Sell pressure aur price level pe order clustering dekho.
+        Heatmap mode: price zones pe buy/sell intensity. Delta mode: net order imbalance.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    hm_col1, hm_col2 = st.columns([2, 1])
+
+    with hm_col1:
+        hm_instrument = st.selectbox(
+            "Instrument",
+            ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"],
+            key="hm_instrument"
+        )
+        hm_name_map = {
+            "NSE_INDEX|Nifty 50":   ("NIFTY",      nifty_price),
+            "NSE_INDEX|Nifty Bank": ("BANK NIFTY", banknifty_price),
+            "BSE_INDEX|SENSEX":     ("SENSEX",      sensex_price),
+        }
+        hm_name, hm_spot = hm_name_map.get(hm_instrument, ("NIFTY", 22400))
+
+    with hm_col2:
+        hm_candles_n = st.slider("Candles", min_value=10, max_value=50, value=30, step=5, key="hm_n")
+        hm_view      = st.radio("View", ["Heatmap", "Delta"], horizontal=True, key="hm_view")
+
+    # ── Generate simulated candle+order-flow data ──────────────
+    import random
+    random.seed(42)
+
+    def gen_hm_candles(spot_price, n=30, n_levels=10):
+        import math, random
+        candles_out = []
+        p = (spot_price or 22400) + random.randint(-300, 300)
+        for i in range(n):
+            o = p
+            mv = random.uniform(-80, 80)
+            c  = o + mv
+            h  = max(o, c) + random.uniform(5, 40)
+            l  = min(o, c) - random.uniform(5, 40)
+            bull = c >= o
+            tv   = random.randint(5000, 50000)
+            br   = random.uniform(0.55, 0.85) if bull else random.uniform(0.20, 0.48)
+            bv   = int(tv * br)
+            sv   = tv - bv
+            lvls = []
+            pr   = h - l
+            for j in range(n_levels):
+                lp   = l + pr / n_levels * (j + 0.5)
+                prox = 1 - abs(lp - c) / max(pr, 1)
+                lvls.append({
+                    "price": lp,
+                    "buy":   int(bv * (prox * 0.3 + random.uniform(0, 0.1))),
+                    "sell":  int(sv * (prox * 0.3 + random.uniform(0, 0.1))),
+                })
+            candles_out.append({
+                "open": o, "close": c, "high": h, "low": l,
+                "buy_vol": bv, "sell_vol": sv, "delta": bv - sv,
+                "bull": bull, "levels": lvls,
+            })
+            p = c
+        return candles_out
+
+    hm_data = gen_hm_candles(hm_spot or 22400, n=hm_candles_n)
+
+    # ── Build Plotly figure ────────────────────────────────────
+    fig_hm = go.Figure()
+
+    all_lows  = [c["low"]  for c in hm_data]
+    all_highs = [c["high"] for c in hm_data]
+    y_min = min(all_lows)  - 30
+    y_max = max(all_highs) + 30
+    n_levels = 10
+
+    total_buy  = sum(c["buy_vol"]  for c in hm_data)
+    total_sell = sum(c["sell_vol"] for c in hm_data)
+
+    max_lvl_delta = 1
+    for c in hm_data:
+        for lv in c["levels"]:
+            d = abs(lv["buy"] - lv["sell"])
+            if d > max_lvl_delta:
+                max_lvl_delta = d
+
+    for i, c in enumerate(hm_data):
+        pr = c["high"] - c["low"]
+        lv_h = pr / n_levels
+
+        if hm_view == "Heatmap":
+            for lv in c["levels"]:
+                delta  = lv["buy"] - lv["sell"]
+                intens = min(abs(delta) / max_lvl_delta, 1.0)
+                if delta > 0:
+                    r = int(27  + (1 - intens) * 40)
+                    g = int(104 + intens * 127)
+                    b = 62
+                else:
+                    r = int(150 + intens * 77)
+                    g = 40
+                    b = 40
+                alpha = 0.15 + intens * 0.75
+                color = f"rgba({r},{g},{b},{alpha:.2f})"
+                fig_hm.add_shape(
+                    type="rect",
+                    x0=i + 0.52, x1=i + 0.95,
+                    y0=lv["price"] - lv_h / 2,
+                    y1=lv["price"] + lv_h / 2,
+                    fillcolor=color, line_width=0,
+                    layer="below"
+                )
+        else:
+            net   = c["delta"]
+            m_d   = max(abs(c["delta"]) for c in hm_data) or 1
+            t     = min(abs(net) / m_d, 1.0)
+            if net >= 0:
+                g = int(100 + t * 35); col = f"rgba(27,{g},62,{0.35+t*0.65:.2f})"
+            else:
+                r = int(150 + t * 77); col = f"rgba({r},40,40,{0.35+t*0.65:.2f})"
+            body_y0 = min(c["open"], c["close"])
+            body_y1 = max(c["open"], c["close"])
+            if body_y1 - body_y0 < 2:
+                body_y1 = body_y0 + 2
+            fig_hm.add_shape(
+                type="rect",
+                x0=i + 0.52, x1=i + 0.95,
+                y0=body_y0, y1=body_y1,
+                fillcolor=col, line_width=0,
+                layer="below"
+            )
+
+        # Candle body
+        body_col = "#00e676" if c["bull"] else "#ff5252"
+        body_y0  = min(c["open"], c["close"])
+        body_y1  = max(c["open"], c["close"])
+        if body_y1 - body_y0 < 0.5:
+            body_y1 = body_y0 + 0.5
+        fig_hm.add_shape(type="rect",
+            x0=i+0.08, x1=i+0.48,
+            y0=body_y0, y1=body_y1,
+            fillcolor=body_col, line_color=body_col, line_width=0.5,
+        )
+        # Wick
+        fig_hm.add_shape(type="line",
+            x0=i+0.28, x1=i+0.28,
+            y0=c["low"], y1=c["high"],
+            line=dict(color=body_col, width=1),
+        )
+
+        # Hover scatter
+        bv_k  = c["buy_vol"]  / 1000
+        sv_k  = c["sell_vol"] / 1000
+        dt_k  = c["delta"]    / 1000
+        dt_s  = f"+{dt_k:.1f}K" if dt_k >= 0 else f"{dt_k:.1f}K"
+        fig_hm.add_trace(go.Scatter(
+            x=[i + 0.28], y=[(c["open"] + c["close"]) / 2],
+            mode="markers",
+            marker=dict(size=8, opacity=0, color=body_col),
+            hovertemplate=(
+                f"<b>Candle {i+1}</b><br>"
+                f"O: {c['open']:.0f}  C: {c['close']:.0f}<br>"
+                f"H: {c['high']:.0f}  L: {c['low']:.0f}<br>"
+                f"<span style='color:#00e676'>Buy: {bv_k:.1f}K</span>  "
+                f"<span style='color:#ff5252'>Sell: {sv_k:.1f}K</span><br>"
+                f"Delta: {dt_s}"
+                "<extra></extra>"
+            ),
+            showlegend=False,
+        ))
+
+    fig_hm.update_layout(
+        height=440,
+        paper_bgcolor="#060a12",
+        plot_bgcolor="#060a12",
+        font=dict(color="#8ab8d8", size=11),
+        margin=dict(l=60, r=20, t=30, b=30),
+        xaxis=dict(
+            showgrid=False, zeroline=False,
+            tickvals=list(range(0, hm_candles_n, 5)),
+            ticktext=[f"C{i+1}" for i in range(0, hm_candles_n, 5)],
+            tickfont=dict(color="#4e7a96", size=10),
+            showline=False,
+        ),
+        yaxis=dict(
+            range=[y_min, y_max],
+            showgrid=True,
+            gridcolor="rgba(29,78,216,0.08)",
+            zeroline=False,
+            tickfont=dict(color="#4e7a96", size=10),
+            tickformat=",.0f",
+        ),
+        hovermode="closest",
+        hoverlabel=dict(
+            bgcolor="#0d1929",
+            bordercolor="#1d4ed8",
+            font=dict(color="#e8f4ff", size=12),
+        ),
+    )
+
+    st.plotly_chart(fig_hm, use_container_width=True)
+
+    # ── Stats row ─────────────────────────────────────────────
+    net_delta  = total_buy - total_sell
+    bias_label = "🟢 Bullish Bias" if net_delta > 0 else "🔴 Bearish Bias"
+    bias_color = "#00e676" if net_delta > 0 else "#ff5252"
+    last_c     = hm_data[-1]
+    last_price = last_c["close"]
+
+    stat_cols = st.columns(5)
+    with stat_cols[0]:
+        st.markdown(f"""<div style="background:#0d1929;border-radius:8px;padding:10px 12px;border:1px solid rgba(29,78,216,0.15)">
+          <div style="font-size:10px;color:#6495b8;margin-bottom:3px">LTP</div>
+          <div style="font-size:18px;font-weight:900;color:#00bfff">₹{last_price:,.0f}</div>
+        </div>""", unsafe_allow_html=True)
+    with stat_cols[1]:
+        st.markdown(f"""<div style="background:#0d1929;border-radius:8px;padding:10px 12px;border:1px solid rgba(29,78,216,0.15)">
+          <div style="font-size:10px;color:#6495b8;margin-bottom:3px">Total Buy Vol</div>
+          <div style="font-size:18px;font-weight:900;color:#00e676">{total_buy/1000:.1f}K</div>
+        </div>""", unsafe_allow_html=True)
+    with stat_cols[2]:
+        st.markdown(f"""<div style="background:#0d1929;border-radius:8px;padding:10px 12px;border:1px solid rgba(29,78,216,0.15)">
+          <div style="font-size:10px;color:#6495b8;margin-bottom:3px">Total Sell Vol</div>
+          <div style="font-size:18px;font-weight:900;color:#ff5252">{total_sell/1000:.1f}K</div>
+        </div>""", unsafe_allow_html=True)
+    with stat_cols[3]:
+        nd_sign = "+" if net_delta >= 0 else ""
+        st.markdown(f"""<div style="background:#0d1929;border-radius:8px;padding:10px 12px;border:1px solid rgba(29,78,216,0.15)">
+          <div style="font-size:10px;color:#6495b8;margin-bottom:3px">Net Delta</div>
+          <div style="font-size:18px;font-weight:900;color:{bias_color}">{nd_sign}{net_delta/1000:.1f}K</div>
+        </div>""", unsafe_allow_html=True)
+    with stat_cols[4]:
+        st.markdown(f"""<div style="background:#0d1929;border-radius:8px;padding:10px 12px;border:1px solid rgba(29,78,216,0.15)">
+          <div style="font-size:10px;color:#6495b8;margin-bottom:3px">Market Bias</div>
+          <div style="font-size:15px;font-weight:900;color:{bias_color}">{bias_label}</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Legend ────────────────────────────────────────────────
+    st.markdown("""
+    <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:11px;color:#6495b8;margin-top:4px">
+      <span><span style="display:inline-block;width:10px;height:10px;background:#1b873f;border-radius:2px;margin-right:4px"></span>Strong Buy</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#66bb6a;border-radius:2px;margin-right:4px"></span>Buy</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#ef9a9a;border-radius:2px;margin-right:4px"></span>Sell</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#c62828;border-radius:2px;margin-right:4px"></span>Strong Sell</span>
+      <span style="color:#4e7a96">| Green candle = Bullish | Red candle = Bearish | Hover karo detail ke liye</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Per-candle delta table ────────────────────────────────
+    with st.expander("📋 Candle-by-Candle Order Flow Table"):
+        rows_hm = ""
+        for i, c in enumerate(hm_data):
+            d     = c["delta"]
+            d_col = "#00e676" if d >= 0 else "#ff5252"
+            d_sign= "+" if d >= 0 else ""
+            bull_icon = "🟢" if c["bull"] else "🔴"
+            rows_hm += f"""
+            <tr style="border-bottom:1px solid rgba(29,78,216,0.08)">
+              <td style="padding:6px 10px;color:#6495b8;font-size:11px">C{i+1}</td>
+              <td style="padding:6px 10px;font-size:11px">{bull_icon}</td>
+              <td style="padding:6px 10px;color:#e8f4ff;font-family:'JetBrains Mono',monospace;font-size:11px">{c['open']:.0f}</td>
+              <td style="padding:6px 10px;color:#e8f4ff;font-family:'JetBrains Mono',monospace;font-size:11px">{c['close']:.0f}</td>
+              <td style="padding:6px 10px;color:#ff5252;font-family:'JetBrains Mono',monospace;font-size:11px">{c['high']:.0f}</td>
+              <td style="padding:6px 10px;color:#00e676;font-family:'JetBrains Mono',monospace;font-size:11px">{c['low']:.0f}</td>
+              <td style="padding:6px 10px;color:#00e676;font-size:11px">{c['buy_vol']/1000:.1f}K</td>
+              <td style="padding:6px 10px;color:#ff5252;font-size:11px">{c['sell_vol']/1000:.1f}K</td>
+              <td style="padding:6px 10px;color:{d_col};font-weight:700;font-size:11px">{d_sign}{d/1000:.1f}K</td>
+            </tr>"""
+        st.markdown(f"""
+        <div style="overflow-x:auto;border-radius:8px;border:1px solid rgba(29,78,216,0.15)">
+        <table style="width:100%;border-collapse:collapse;background:#0a1220;font-family:'Inter',sans-serif">
+          <thead>
+            <tr style="background:rgba(29,78,216,0.12);border-bottom:1px solid rgba(29,78,216,0.25)">
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">#</th>
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">Dir</th>
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">Open</th>
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">Close</th>
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">High</th>
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">Low</th>
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">Buy Vol</th>
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">Sell Vol</th>
+              <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">Delta</th>
+            </tr>
+          </thead>
+          <tbody>{rows_hm}</tbody>
+        </table>
+        </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════
 # 📓 TRADE JOURNAL
