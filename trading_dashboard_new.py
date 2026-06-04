@@ -3535,8 +3535,9 @@ with tab4:
 
         with hm_col1:
             hm_instrument = st.selectbox(
-                "Instrument select karo",
+                "📌 Instrument",
                 ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"],
+                format_func=lambda x: {"NSE_INDEX|Nifty 50": "📊 NIFTY 50", "NSE_INDEX|Nifty Bank": "🏦 BANK NIFTY", "BSE_INDEX|SENSEX": "📈 BSE SENSEX"}.get(x, x),
                 key="hm_instrument"
             )
 
@@ -3550,11 +3551,11 @@ with tab4:
         _sp  = float(sensex_price)    if sensex_price    else 74838.0
 
         hm_name_map = {
-            "NSE_INDEX|Nifty 50":   ("NIFTY",      _np),
-            "NSE_INDEX|Nifty Bank": ("BANK NIFTY", _bnp),
-            "BSE_INDEX|SENSEX":     ("SENSEX",      _sp),
+            "NSE_INDEX|Nifty 50":   ("NIFTY 50",    _np),
+            "NSE_INDEX|Nifty Bank": ("BANK NIFTY",  _bnp),
+            "BSE_INDEX|SENSEX":     ("BSE SENSEX",  _sp),
         }
-        hm_name, hm_spot = hm_name_map.get(hm_instrument, ("NIFTY", 23560.0))
+        hm_name, hm_spot = hm_name_map.get(hm_instrument, ("NIFTY 50", 23560.0))
 
         # ── Candle + Order Flow data generate karo ────────────
         def _gen_candles(base_price, n=30, n_lv=10):
@@ -3594,24 +3595,75 @@ with tab4:
         net_delta  = total_buy - total_sell
         last_price = hm_data[-1]["close"]
 
+        # ── Dominant Order Flow Zone calculate karo ───────────
+        # Sabhi candles ke sabhi levels ka combined buy+sell volume nikalo
+        zone_totals = {}  # price_level_key -> {buy, sell, delta, price}
+        for cd in hm_data:
+            pr  = max(cd["high"] - cd["low"], 0.01)
+            lvh = pr / 10
+            for lv in cd["levels"]:
+                # Price ko nearest 50 pe round karo — zone grouping ke liye
+                zone_key = round(lv["price"] / 50) * 50
+                if zone_key not in zone_totals:
+                    zone_totals[zone_key] = {"buy": 0, "sell": 0, "price": zone_key}
+                zone_totals[zone_key]["buy"]  += lv["buy"]
+                zone_totals[zone_key]["sell"] += lv["sell"]
+
+        # Sabse zyada total volume wala zone
+        dominant_zone = max(
+            zone_totals.values(),
+            key=lambda z: z["buy"] + z["sell"]
+        ) if zone_totals else {"buy": 0, "sell": 0, "price": hm_spot}
+
+        dz_buy   = dominant_zone["buy"]
+        dz_sell  = dominant_zone["sell"]
+        dz_price = dominant_zone["price"]
+        dz_total = dz_buy + dz_sell
+        dz_delta = dz_buy - dz_sell
+        dz_type  = "🟢 BUY ZONE" if dz_delta >= 0 else "🔴 SELL ZONE"
+        dz_color = "#00e676" if dz_delta >= 0 else "#ff5252"
+        dz_border= "rgba(0,230,118,0.5)" if dz_delta >= 0 else "rgba(255,82,82,0.5)"
+
         # ── Stats row ─────────────────────────────────────────
         bias_color = "#00e676" if net_delta >= 0 else "#ff5252"
         bias_label = "🟢 Bullish" if net_delta >= 0 else "🔴 Bearish"
         nd_sign    = "+" if net_delta >= 0 else ""
 
-        sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+        sc1, sc2, sc3, sc4, sc5, sc6 = st.columns(6)
+
+        # Card 1 — Instrument + LTP
+        with sc1:
+            st.markdown(f"""
+            <div style="background:#0d1929;border-radius:8px;padding:10px 12px;
+                        border:1px solid rgba(29,78,216,0.18);margin-bottom:8px">
+              <div style="font-size:10px;color:#6495b8;margin-bottom:3px">Instrument / LTP</div>
+              <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:2px">{hm_name}</div>
+              <div style="font-size:18px;font-weight:900;color:#00bfff">₹{hm_spot:,.2f}</div>
+            </div>""", unsafe_allow_html=True)
+
         for col, label, val, color in [
-            (sc1, "LTP",        f"₹{last_price:,.0f}",          "#00bfff"),
-            (sc2, "Buy Volume", f"{total_buy/1000:.1f}K",        "#00e676"),
-            (sc3, "Sell Volume",f"{total_sell/1000:.1f}K",       "#ff5252"),
-            (sc4, "Net Delta",  f"{nd_sign}{net_delta/1000:.1f}K", bias_color),
-            (sc5, "Bias",       bias_label,                      bias_color),
+            (sc2, "Buy Volume",  f"{total_buy/1000:.1f}K",           "#00e676"),
+            (sc3, "Sell Volume", f"{total_sell/1000:.1f}K",          "#ff5252"),
+            (sc4, "Net Delta",   f"{nd_sign}{net_delta/1000:.1f}K",  bias_color),
+            (sc5, "Bias",        bias_label,                         bias_color),
         ]:
             col.markdown(f"""
             <div style="background:#0d1929;border-radius:8px;padding:10px 12px;
                         border:1px solid rgba(29,78,216,0.18);margin-bottom:8px">
               <div style="font-size:10px;color:#6495b8;margin-bottom:3px">{label}</div>
               <div style="font-size:16px;font-weight:900;color:{color}">{val}</div>
+            </div>""", unsafe_allow_html=True)
+
+        # Card 6 — 🔥 Dominant Order Flow Zone
+        with sc6:
+            st.markdown(f"""
+            <div style="background:#0d1929;border-radius:8px;padding:10px 12px;
+                        border:2px solid {dz_border};margin-bottom:8px;
+                        box-shadow:0 0 12px {dz_border}">
+              <div style="font-size:10px;color:#6495b8;margin-bottom:3px">🔥 Max Order Flow Zone</div>
+              <div style="font-size:13px;font-weight:900;color:{dz_color};margin-bottom:2px">{dz_type}</div>
+              <div style="font-size:16px;font-weight:900;color:#ffd600">₹{dz_price:,.0f}</div>
+              <div style="font-size:10px;color:#6495b8;margin-top:2px">Vol: {dz_total/1000:.1f}K</div>
             </div>""", unsafe_allow_html=True)
 
         # ── Plotly Heatmap chart ───────────────────────────────
@@ -3694,6 +3746,41 @@ with tab4:
                 ),
                 showlegend=False,
             ))
+
+        # ── Dominant Zone highlight — full-width horizontal band ──
+        dz_band_half = 30  # ±30 points around dominant price
+        dz_fill = "rgba(0,230,118,0.07)" if dz_delta >= 0 else "rgba(255,82,82,0.07)"
+        dz_line_clr = "#00e676" if dz_delta >= 0 else "#ff5252"
+
+        fig_hm.add_shape(
+            type="rect",
+            x0=0, x1=hm_candles_n,
+            y0=dz_price - dz_band_half,
+            y1=dz_price + dz_band_half,
+            fillcolor=dz_fill,
+            line=dict(color=dz_line_clr, width=1, dash="dot"),
+            layer="below"
+        )
+        # Center line
+        fig_hm.add_shape(
+            type="line",
+            x0=0, x1=hm_candles_n,
+            y0=dz_price, y1=dz_price,
+            line=dict(color=dz_line_clr, width=1.5, dash="dash"),
+        )
+        # Label annotation
+        fig_hm.add_annotation(
+            x=hm_candles_n - 0.5,
+            y=dz_price,
+            text=f"🔥 Max Zone ₹{dz_price:,.0f}",
+            showarrow=False,
+            font=dict(color=dz_line_clr, size=10, family="JetBrains Mono"),
+            bgcolor="#060a12",
+            bordercolor=dz_line_clr,
+            borderwidth=1,
+            borderpad=3,
+            xanchor="right",
+        )
 
         fig_hm.update_layout(
             height=440,
