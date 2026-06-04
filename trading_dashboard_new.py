@@ -3595,6 +3595,10 @@ with tab4:
         net_delta  = total_buy - total_sell
         last_price = hm_data[-1]["close"]
 
+        # ── Sabse zyada order flow wali candle ────────────────
+        max_flow_idx = max(range(len(hm_data)), key=lambda i: hm_data[i]["buy_vol"] + hm_data[i]["sell_vol"])
+        max_flow_cd  = hm_data[max_flow_idx]
+
         # ── Dominant Order Flow Zone calculate karo ───────────
         # Sabhi candles ke sabhi levels ka combined buy+sell volume nikalo
         zone_totals = {}  # price_level_key -> {buy, sell, delta, price}
@@ -3718,14 +3722,40 @@ with tab4:
             by1  = max(cd["open"], cd["close"])
             if by1 - by0 < 0.5:
                 by1 = by0 + 0.5
+
+            # 🔥 Max order flow candle — glowing highlight
+            if i == max_flow_idx:
+                # Background glow rect behind candle
+                fig_hm.add_shape(type="rect",
+                    x0=i-0.02, x1=i+0.50,
+                    y0=cd["low"] - 8, y1=cd["high"] + 8,
+                    fillcolor="rgba(255,215,0,0.08)",
+                    line=dict(color="#ffd600", width=2),
+                    layer="below")
+                # Crown annotation above candle
+                fig_hm.add_annotation(
+                    x=i+0.28, y=cd["high"] + 15,
+                    text=f"🔥 {(max_flow_cd['buy_vol']+max_flow_cd['sell_vol'])/1000:.1f}K",
+                    showarrow=True,
+                    arrowhead=2, arrowsize=1, arrowwidth=1.5,
+                    arrowcolor="#ffd600",
+                    ay=-28, ax=0,
+                    font=dict(color="#ffd600", size=10, family="JetBrains Mono"),
+                    bgcolor="#0d1929",
+                    bordercolor="#ffd600",
+                    borderwidth=1,
+                    borderpad=3,
+                )
+
             fig_hm.add_shape(type="rect",
                 x0=i+0.08, x1=i+0.48,
                 y0=by0, y1=by1,
-                fillcolor=bcol, line_color=bcol, line_width=0.5)
+                fillcolor=bcol, line_color="#ffd600" if i == max_flow_idx else bcol,
+                line_width=2 if i == max_flow_idx else 0.5)
             fig_hm.add_shape(type="line",
                 x0=i+0.28, x1=i+0.28,
                 y0=cd["low"], y1=cd["high"],
-                line=dict(color=bcol, width=1))
+                line=dict(color="#ffd600" if i == max_flow_idx else bcol, width=2 if i == max_flow_idx else 1))
 
             # Hover point
             bvk = cd["buy_vol"] / 1000
@@ -3761,14 +3791,12 @@ with tab4:
             line=dict(color=dz_line_clr, width=1, dash="dot"),
             layer="below"
         )
-        # Center line
         fig_hm.add_shape(
             type="line",
             x0=0, x1=hm_candles_n,
             y0=dz_price, y1=dz_price,
             line=dict(color=dz_line_clr, width=1.5, dash="dash"),
         )
-        # Label annotation
         fig_hm.add_annotation(
             x=hm_candles_n - 0.5,
             y=dz_price,
@@ -3782,8 +3810,84 @@ with tab4:
             xanchor="right",
         )
 
+        # ══════════════════════════════════════════════════════
+        # ── Support / Resistance Lines ────────────────────────
+        # Logic:
+        #   Resistance = candles ke local HIGH points jahan price
+        #                bounce karke neeche aayi (swing highs)
+        #   Support    = candles ke local LOW points jahan price
+        #                bounce karke upar aayi (swing lows)
+        #   Strength   = us level pe kitna order flow tha
+        # ══════════════════════════════════════════════════════
+        swing_highs = []  # (price, candle_idx, vol)
+        swing_lows  = []  # (price, candle_idx, vol)
+
+        for i in range(1, len(hm_data) - 1):
+            prev = hm_data[i - 1]
+            curr = hm_data[i]
+            nxt  = hm_data[i + 1]
+            vol  = curr["buy_vol"] + curr["sell_vol"]
+
+            # Swing High — curr.high > both neighbours
+            if curr["high"] > prev["high"] and curr["high"] > nxt["high"]:
+                swing_highs.append((curr["high"], i, vol))
+
+            # Swing Low — curr.low < both neighbours
+            if curr["low"] < prev["low"] and curr["low"] < nxt["low"]:
+                swing_lows.append((curr["low"], i, vol))
+
+        # Volume ke hisaab se sort — top 3 resistance, top 3 support
+        swing_highs.sort(key=lambda x: x[2], reverse=True)
+        swing_lows.sort(key=lambda x:  x[2], reverse=True)
+        top_resistance = swing_highs[:3]
+        top_support    = swing_lows[:3]
+
+        # Resistance lines — red dashed
+        for rank, (price, cidx, vol) in enumerate(top_resistance):
+            strength = ["Strong", "Medium", "Weak"][rank]
+            opacity  = [1.0, 0.65, 0.40][rank]
+            lw       = [2.0, 1.5, 1.0][rank]
+            fig_hm.add_shape(
+                type="line",
+                x0=0, x1=hm_candles_n,
+                y0=price, y1=price,
+                line=dict(color=f"rgba(255,82,82,{opacity})", width=lw, dash="dot"),
+            )
+            fig_hm.add_annotation(
+                x=0.3, y=price,
+                text=f"R{rank+1} {strength} ₹{price:,.0f}  [{vol/1000:.1f}K vol]",
+                showarrow=False,
+                font=dict(color=f"rgba(255,130,130,{opacity})", size=9, family="JetBrains Mono"),
+                bgcolor="rgba(6,10,18,0.85)",
+                bordercolor=f"rgba(255,82,82,{opacity})",
+                borderwidth=1, borderpad=2,
+                xanchor="left",
+            )
+
+        # Support lines — green dashed
+        for rank, (price, cidx, vol) in enumerate(top_support):
+            strength = ["Strong", "Medium", "Weak"][rank]
+            opacity  = [1.0, 0.65, 0.40][rank]
+            lw       = [2.0, 1.5, 1.0][rank]
+            fig_hm.add_shape(
+                type="line",
+                x0=0, x1=hm_candles_n,
+                y0=price, y1=price,
+                line=dict(color=f"rgba(0,230,118,{opacity})", width=lw, dash="dot"),
+            )
+            fig_hm.add_annotation(
+                x=0.3, y=price,
+                text=f"S{rank+1} {strength} ₹{price:,.0f}  [{vol/1000:.1f}K vol]",
+                showarrow=False,
+                font=dict(color=f"rgba(100,230,150,{opacity})", size=9, family="JetBrains Mono"),
+                bgcolor="rgba(6,10,18,0.85)",
+                bordercolor=f"rgba(0,230,118,{opacity})",
+                borderwidth=1, borderpad=2,
+                xanchor="left",
+            )
+
         fig_hm.update_layout(
-            height=440,
+            height=480,
             paper_bgcolor="#060a12",
             plot_bgcolor="#060a12",
             font=dict(color="#8ab8d8", size=11),
@@ -3811,6 +3915,55 @@ with tab4:
 
         st.plotly_chart(fig_hm, use_container_width=True)
 
+        # ── Support / Resistance Summary Table ────────────────
+        sr_col1, sr_col2 = st.columns(2)
+
+        with sr_col1:
+            r_rows = ""
+            for rank, (price, cidx, vol) in enumerate(top_resistance):
+                strength = ["Strong 🔴🔴🔴", "Medium 🔴🔴", "Weak 🔴"][rank]
+                r_rows += f"""
+                <tr style="border-bottom:1px solid rgba(255,82,82,0.1)">
+                  <td style="padding:7px 10px;color:#ff8282;font-size:11px;font-weight:700">R{rank+1}</td>
+                  <td style="padding:7px 10px;color:#ff5252;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:900">₹{price:,.0f}</td>
+                  <td style="padding:7px 10px;color:#6495b8;font-size:11px">{strength}</td>
+                  <td style="padding:7px 10px;color:#a8ccdf;font-size:11px">{vol/1000:.1f}K vol</td>
+                  <td style="padding:7px 10px;color:#6495b8;font-size:10px">C{cidx+1}</td>
+                </tr>"""
+            st.markdown(f"""
+            <div style="border-radius:8px;overflow:hidden;border:1px solid rgba(255,82,82,0.2);margin-bottom:8px">
+            <div style="background:rgba(255,82,82,0.1);padding:8px 12px;font-size:11px;font-weight:700;
+                        color:#ff8282;letter-spacing:1px;border-bottom:1px solid rgba(255,82,82,0.2)">
+              🔴 RESISTANCE LEVELS (Swing Highs)
+            </div>
+            <table style="width:100%;border-collapse:collapse;background:#080f1a">
+              <tbody>{r_rows if r_rows else "<tr><td colspan='5' style='padding:10px;color:#4e7a96;font-size:11px;text-align:center'>Koi swing high nahi mila</td></tr>"}</tbody>
+            </table>
+            </div>""", unsafe_allow_html=True)
+
+        with sr_col2:
+            s_rows = ""
+            for rank, (price, cidx, vol) in enumerate(top_support):
+                strength = ["Strong 🟢🟢🟢", "Medium 🟢🟢", "Weak 🟢"][rank]
+                s_rows += f"""
+                <tr style="border-bottom:1px solid rgba(0,230,118,0.1)">
+                  <td style="padding:7px 10px;color:#66bb6a;font-size:11px;font-weight:700">S{rank+1}</td>
+                  <td style="padding:7px 10px;color:#00e676;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:900">₹{price:,.0f}</td>
+                  <td style="padding:7px 10px;color:#6495b8;font-size:11px">{strength}</td>
+                  <td style="padding:7px 10px;color:#a8ccdf;font-size:11px">{vol/1000:.1f}K vol</td>
+                  <td style="padding:7px 10px;color:#6495b8;font-size:10px">C{cidx+1}</td>
+                </tr>"""
+            st.markdown(f"""
+            <div style="border-radius:8px;overflow:hidden;border:1px solid rgba(0,230,118,0.2);margin-bottom:8px">
+            <div style="background:rgba(0,230,118,0.08);padding:8px 12px;font-size:11px;font-weight:700;
+                        color:#66bb6a;letter-spacing:1px;border-bottom:1px solid rgba(0,230,118,0.2)">
+              🟢 SUPPORT LEVELS (Swing Lows)
+            </div>
+            <table style="width:100%;border-collapse:collapse;background:#080f1a">
+              <tbody>{s_rows if s_rows else "<tr><td colspan='5' style='padding:10px;color:#4e7a96;font-size:11px;text-align:center'>Koi swing low nahi mila</td></tr>"}</tbody>
+            </table>
+            </div>""", unsafe_allow_html=True)
+
         # ── Legend ────────────────────────────────────────────
         st.markdown("""
         <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px;color:#6495b8;margin-top:2px;padding:8px 0">
@@ -3818,7 +3971,7 @@ with tab4:
           <span><span style="display:inline-block;width:10px;height:10px;background:#66bb6a;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Buy</span>
           <span><span style="display:inline-block;width:10px;height:10px;background:#ef9a9a;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Sell</span>
           <span><span style="display:inline-block;width:10px;height:10px;background:#c62828;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Strong Sell</span>
-          <span style="color:#4e7a96">| 🟢 Green candle = Bullish &nbsp; 🔴 Red candle = Bearish</span>
+          <span style="color:#4e7a96">| 🟢 Candle = Bullish &nbsp; 🔴 Candle = Bearish &nbsp; 🔥 = Max Order Flow &nbsp; — — = S/R Levels</span>
         </div>
         """, unsafe_allow_html=True)
 
