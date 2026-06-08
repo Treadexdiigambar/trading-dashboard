@@ -1085,6 +1085,18 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
         call_ltp    = item.get("call_options", {}).get("market_data", {}).get("ltp", 0) or 0
         put_ltp     = item.get("put_options",  {}).get("market_data", {}).get("ltp", 0) or 0
 
+        # Volume, High, Low, Open — Upstox market_data se
+        call_vol    = item.get("call_options", {}).get("market_data", {}).get("volume", 0) or 0
+        put_vol     = item.get("put_options",  {}).get("market_data", {}).get("volume", 0) or 0
+        call_high   = item.get("call_options", {}).get("market_data", {}).get("high", 0) or 0
+        put_high    = item.get("put_options",  {}).get("market_data", {}).get("high", 0) or 0
+        call_low    = item.get("call_options", {}).get("market_data", {}).get("low", 0) or 0
+        put_low     = item.get("put_options",  {}).get("market_data", {}).get("low", 0) or 0
+        call_open   = item.get("call_options", {}).get("market_data", {}).get("open", 0) or 0
+        put_open    = item.get("put_options",  {}).get("market_data", {}).get("open", 0) or 0
+        call_close  = item.get("call_options", {}).get("market_data", {}).get("close", 0) or 0
+        put_close   = item.get("put_options",  {}).get("market_data", {}).get("close", 0) or 0
+
         # IV — multiple possible locations in Upstox API
         call_greeks = item.get("call_options", {}).get("option_greeks", {}) or {}
         put_greeks  = item.get("put_options",  {}).get("option_greeks", {}) or {}
@@ -1123,10 +1135,31 @@ def calculate_analysis(chain_data, spot_price, expiry=None):
         total_call_oi += call_oi
         total_put_oi  += put_oi
         max_pain_data[strike] = {"call_oi": call_oi, "put_oi": put_oi}
-        oi_data.append({"Strike": strike, "Call OI": call_oi, "Put OI": put_oi,
-                        "Call OI Change": call_oi_chg, "Put OI Change": put_oi_chg,
-                        "Call LTP": call_ltp, "Put LTP": put_ltp,
-                        "Call IV": call_iv, "Put IV": put_iv})
+        oi_data.append({
+            "Strike":          strike,
+            # ── OI ──────────────────────
+            "Call OI":         call_oi,
+            "Put OI":          put_oi,
+            "Call OI Change":  call_oi_chg,
+            "Put OI Change":   put_oi_chg,
+            # ── Price ───────────────────
+            "Call LTP":        call_ltp,
+            "Put LTP":         put_ltp,
+            "Call Open":       call_open,
+            "Put Open":        put_open,
+            "Call High":       call_high,
+            "Put High":        put_high,
+            "Call Low":        call_low,
+            "Put Low":         put_low,
+            "Call Close":      call_close,
+            "Put Close":       put_close,
+            # ── Volume ──────────────────
+            "Call Volume":     call_vol,
+            "Put Volume":      put_vol,
+            # ── IV ──────────────────────
+            "Call IV":         call_iv,
+            "Put IV":          put_iv,
+        })
 
     # Save current OI — sirf file mein (reliable)
     if curr_oi:
@@ -1971,7 +2004,63 @@ for tab, instrument, name, spot in [
         if not result:
             continue
 
-        # ── OI Wall Ticker update — har 3 min ────────────────
+        # ══════════════════════════════════════════════════════
+        # 💾 FULL OPTION CHAIN — AUTO CSV SAVE
+        # Har refresh pe save hoga + manual button bhi hai
+        # ══════════════════════════════════════════════════════
+        OPT_SAVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "option_data")
+        os.makedirs(OPT_SAVE_DIR, exist_ok=True)
+
+        def save_option_chain_csv(df_save, instrument_name, spot_price, expiry_date):
+            """Full option chain CSV mein save karo — timestamp ke saath"""
+            try:
+                now_t     = now_ist()
+                date_str  = now_t.strftime("%Y-%m-%d")
+                time_str  = now_t.strftime("%H-%M-%S")
+                safe_name = instrument_name.replace(" ", "_").replace("|", "_")
+
+                # ── 1. Full snapshot file (timestamp ke saath) ──
+                snap_dir  = os.path.join(OPT_SAVE_DIR, safe_name, date_str)
+                os.makedirs(snap_dir, exist_ok=True)
+                snap_file = os.path.join(snap_dir, f"{safe_name}_{date_str}_{time_str}.csv")
+
+                df_out = df_save.copy()
+                df_out.insert(0, "timestamp",  now_t.strftime("%Y-%m-%d %H:%M:%S"))
+                df_out.insert(1, "instrument", instrument_name)
+                df_out.insert(2, "spot",       round(spot_price, 2) if spot_price else 0)
+                df_out.insert(3, "expiry",     str(expiry_date))
+                df_out.to_csv(snap_file, index=False)
+
+                # ── 2. Latest file (hamesha overwrite) ──────────
+                latest_file = os.path.join(OPT_SAVE_DIR, f"{safe_name}_latest.csv")
+                df_out.to_csv(latest_file, index=False)
+
+                # ── 3. Intraday log (ek din ka sab data append) ──
+                log_file = os.path.join(OPT_SAVE_DIR, safe_name, f"{safe_name}_{date_str}_intraday_log.csv")
+                header_needed = not os.path.exists(log_file)
+                df_out.to_csv(log_file, mode="a", index=False, header=header_needed)
+
+                return snap_file, len(df_out)
+            except Exception as e:
+                print(f"[WARN] Option chain save failed: {e}")
+                return None, 0
+
+        # ── Auto save — market hours mein har refresh pe ────────
+        _save_key = f"last_opt_save_{name}"
+        if _save_key not in st.session_state:
+            st.session_state[_save_key] = 0
+
+        _now_ts   = time.time()
+        _auto_interval = 60  # har 60 seconds mein save (refresh se zyada nahi)
+        _df_to_save = result["df"]
+
+        if not _df_to_save.empty and (_now_ts - st.session_state[_save_key] >= _auto_interval):
+            _snap, _rows = save_option_chain_csv(_df_to_save, name, spot, expiry)
+            if _snap:
+                st.session_state[_save_key] = _now_ts
+                print(f"[AUTO SAVE] {name}: {_rows} strikes saved → {os.path.basename(_snap)}")
+
+
         now_ts = time.time()
         if now_ts - st.session_state.oi_wall_last_update >= 180 or not st.session_state.oi_wall_ticker:
             df_oi    = result["df"]
@@ -2455,6 +2544,51 @@ for tab, instrument, name, spot in [
                     bargap=0.15,
                 )
                 st.plotly_chart(fig_oi, use_container_width=True)
+
+                # ══ MANUAL SAVE BUTTON + STATUS ══════════════
+                _sv_col1, _sv_col2, _sv_col3 = st.columns([2, 2, 4])
+                with _sv_col1:
+                    if st.button(f"💾 Save {name} Data", key=f"manual_save_{name}"):
+                        _snap2, _rows2 = save_option_chain_csv(result["df"], name, spot, expiry)
+                        if _snap2:
+                            st.session_state[f"last_save_msg_{name}"] = f"✅ Saved {_rows2} strikes → {os.path.basename(_snap2)}"
+                            st.session_state[_save_key] = time.time()
+                        else:
+                            st.session_state[f"last_save_msg_{name}"] = "❌ Save failed"
+
+                with _sv_col2:
+                    # Download latest CSV
+                    _latest_f = os.path.join(OPT_SAVE_DIR, f"{name.replace(' ','_')}_latest.csv")
+                    if os.path.exists(_latest_f):
+                        with open(_latest_f, "rb") as _dlf:
+                            st.download_button(
+                                label=f"📥 Download Latest CSV",
+                                data=_dlf.read(),
+                                file_name=f"{name.replace(' ','_')}_latest.csv",
+                                mime="text/csv",
+                                key=f"dl_latest_{name}"
+                            )
+
+                with _sv_col3:
+                    # Auto save status
+                    _last_save_ts = st.session_state.get(_save_key, 0)
+                    _msg = st.session_state.get(f"last_save_msg_{name}", "")
+                    if _last_save_ts > 0:
+                        _ago = int(time.time() - _last_save_ts)
+                        _ago_str = f"{_ago}s ago" if _ago < 60 else f"{_ago//60}m ago"
+                        st.markdown(f"""
+                        <div style="background:#0d1929;border-radius:6px;padding:7px 12px;border:1px solid rgba(0,230,118,0.2);margin-top:4px;font-size:11px">
+                          <span style="color:#00e676">🟢 Auto Save ON</span>
+                          <span style="color:#6495b8;margin-left:8px">Last: {_ago_str}</span>
+                          {'<span style="color:#00e676;margin-left:8px">' + _msg + '</span>' if _msg else ''}
+                          <span style="color:#4e7a96;margin-left:8px">📁 option_data/{name.replace(" ","_")}/</span>
+                        </div>""", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div style="background:#0d1929;border-radius:6px;padding:7px 12px;border:1px solid rgba(255,214,0,0.2);margin-top:4px;font-size:11px">
+                          <span style="color:#ffd600">⏳ Pehla save pending...</span>
+                          <span style="color:#4e7a96;margin-left:8px">📁 option_data/{name.replace(" ","_")}/</span>
+                        </div>""", unsafe_allow_html=True)
 
                 # ══ TEJI / MANDI SCANNER ══
                 st.markdown('<div class="sec-header" style="border-left:3px solid #a78bfa">📋 OI & OI Change Table</div>', unsafe_allow_html=True)
