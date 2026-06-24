@@ -222,6 +222,107 @@ def safe_api_call(func, *args, fallback=None, **kwargs):
         print(f"[WARN] API call failed: {e}")
         return fallback
 
+# ── Performance Cache — TTL (seconds) ────────────────────────
+CACHE_TTL_LTP      = 5    # LTP har 5 sec refresh
+CACHE_TTL_QUOTE    = 10   # Full quote har 10 sec
+CACHE_TTL_OHLC     = 60   # OHLC har 1 min (rarely changes)
+CACHE_TTL_CHAIN    = 30   # Option chain har 30 sec
+CACHE_TTL_EXPIRY   = 300  # Expiries har 5 min (almost never changes)
+CACHE_TTL_VIX      = 15   # VIX har 15 sec
+CACHE_TTL_FII      = 300  # FII/DII har 5 min (daily data)
+
+# ── Cache Store — session_state mein TTL ke saath ─────────────
+def _cache_get(key, ttl):
+    """Cache se data lo — agar TTL expire nahi hua toh"""
+    store = st.session_state.get("_perf_cache", {})
+    entry = store.get(key)
+    if entry and (time.time() - entry["ts"]) < ttl:
+        return entry["data"], True   # (data, cache_hit)
+    return None, False
+
+def _cache_set(key, data):
+    """Cache mein data save karo current timestamp ke saath"""
+    if "_perf_cache" not in st.session_state:
+        st.session_state["_perf_cache"] = {}
+    st.session_state["_perf_cache"][key] = {"data": data, "ts": time.time()}
+
+def cached_get_ltp(token, keys):
+    """LTP — cached version"""
+    cache_key = f"ltp_{'_'.join(sorted(keys))}"
+    data, hit = _cache_get(cache_key, CACHE_TTL_LTP)
+    if hit:
+        return data
+    result = get_ltp(token, keys)
+    if result:
+        _cache_set(cache_key, result)
+    return result or st.session_state.get("cache_ltp", {})
+
+def cached_get_full_quote(token, keys):
+    """Full quote — cached version"""
+    cache_key = f"quote_{'_'.join(sorted(keys))}"
+    data, hit = _cache_get(cache_key, CACHE_TTL_QUOTE)
+    if hit:
+        return data
+    result = get_full_quote(token, keys)
+    if result:
+        _cache_set(cache_key, result)
+    return result or st.session_state.get("cache_quote", {})
+
+def cached_get_ohlc(token, keys):
+    """OHLC — cached version (1 min TTL)"""
+    cache_key = f"ohlc_{'_'.join(sorted(keys))}"
+    data, hit = _cache_get(cache_key, CACHE_TTL_OHLC)
+    if hit:
+        return data
+    result = get_ohlc(token, keys)
+    if result:
+        _cache_set(cache_key, result)
+    return result or st.session_state.get("cache_ohlc", {})
+
+def cached_get_expiries(token, instrument):
+    """Expiries — cached version (5 min TTL)"""
+    cache_key = f"expiry_{instrument}"
+    data, hit = _cache_get(cache_key, CACHE_TTL_EXPIRY)
+    if hit:
+        return data
+    result = get_all_expiries(token, instrument)
+    if result:
+        _cache_set(cache_key, result)
+    return result or st.session_state.get("cache_expiries", {}).get(instrument, [])
+
+def cached_get_option_chain(token, instrument, selected_expiry=None, all_exp=None):
+    """Option chain — cached version (30 sec TTL)"""
+    cache_key = f"chain_{instrument}_{selected_expiry}"
+    data, hit = _cache_get(cache_key, CACHE_TTL_CHAIN)
+    if hit:
+        return data  # (chain_data, expiry) tuple
+    result = get_option_chain(token, instrument, selected_expiry, all_exp)
+    if result and result[0]:
+        _cache_set(cache_key, result)
+    return result
+
+def cached_get_vix():
+    """VIX — cached version (15 sec TTL)"""
+    cache_key = "vix"
+    data, hit = _cache_get(cache_key, CACHE_TTL_VIX)
+    if hit:
+        return data
+    result = get_india_vix()
+    if result:
+        _cache_set(cache_key, result)
+    return result or st.session_state.get("cache_vix")
+
+def cached_get_fii_dii():
+    """FII/DII — cached version (5 min TTL)"""
+    cache_key = "fii_dii"
+    data, hit = _cache_get(cache_key, CACHE_TTL_FII)
+    if hit:
+        return data
+    result = get_fii_dii_data()
+    if result:
+        _cache_set(cache_key, result)
+    return result or st.session_state.get("cache_fii")
+
 st.set_page_config(page_title="Nifty & Bank Nifty Dashboard", page_icon="📈", layout="wide")
 
 # ── API Key check — startup pe warn karo ──────────────────────
@@ -608,6 +709,8 @@ for key, val in [
     ("oi_wall_last_update", 0), # timestamp of last OI wall check
     # ── Breakout Range Tracking ──
     ("breakout_ranges", {}),    # {name: {high, low, buffer, prev_signal, prev_price}}
+    # ── Performance Cache ──
+    ("_perf_cache", {}),        # {key: {data, ts}} — TTL based cache
 ]:
     if key not in st.session_state:
         st.session_state[key] = val
@@ -1720,9 +1823,9 @@ if st.session_state.cache_timestamp:
 
 # ── Naya data fetch karo ──────────────────────────────────────
 with st.spinner("Live prices la raha hoon..."):
-    new_ltp   = safe_api_call(get_ltp,       token, ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"], fallback=None)
-    new_quote = safe_api_call(get_full_quote, token, ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"], fallback=None)
-    new_ohlc  = safe_api_call(get_ohlc,      token, ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"], fallback=None)
+    new_ltp   = safe_api_call(cached_get_ltp,       token, ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"], fallback=None)
+    new_quote = safe_api_call(cached_get_full_quote, token, ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"], fallback=None)
+    new_ohlc  = safe_api_call(cached_get_ohlc,      token, ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"], fallback=None)
 
 # ── Cache update — agar naya data aaya toh save karo ─────────
 if new_ltp:   st.session_state.cache_ltp   = new_ltp
@@ -1890,7 +1993,7 @@ with col3:
 
 with col4:
     # ── India VIX ──────────────────────────────────────────
-    vix_data = safe_api_call(get_india_vix, fallback=None)
+    vix_data = safe_api_call(cached_get_vix, fallback=None)
     if vix_data and vix_data.get("last"):
         vix_val   = vix_data["last"]
         vix_chg   = vix_data.get("pchange", 0) or 0
@@ -1960,7 +2063,7 @@ for tab, instrument, name, spot in [
         exp_key      = f"expiry_{name}"
         exp_cache_key = f"exp_{instrument}"
         with st.spinner(f"{name} expiries fetch kar raha hoon..."):
-            new_expiries = get_all_expiries(token, instrument)
+            new_expiries = cached_get_expiries(token, instrument)
         # Cache update
         if new_expiries:
             st.session_state.cache_expiries[exp_cache_key] = new_expiries
@@ -1988,7 +2091,7 @@ for tab, instrument, name, spot in [
         # ── Option chain with cache ───────────────────────────
         chain_cache_key = f"{instrument}_{selected_expiry}"
         with st.spinner(f"{name} data la raha hoon..."):
-            new_chain, new_expiry = get_option_chain(token, instrument, selected_expiry, all_expiries)
+            new_chain, new_expiry = cached_get_option_chain(token, instrument, selected_expiry, all_expiries)
         # Cache update — agar naya data aaya
         if new_chain:
             st.session_state.cache_chain[chain_cache_key] = (new_chain, new_expiry)
@@ -2841,7 +2944,7 @@ with col_fii2:
     if st.button("🔄 FII/DII Refresh"): st.rerun()
 
 with st.spinner("FII/DII data la raha hoon..."):
-    fii_dii = safe_api_call(get_fii_dii_data, fallback=None)
+    fii_dii = safe_api_call(cached_get_fii_dii, fallback=None)
 
 if fii_dii:
     try:
@@ -3794,6 +3897,12 @@ else:
     <style>.block-container {{ padding-bottom: 50px !important; }}</style>
     """, unsafe_allow_html=True)
 
+# ── Auto Refresh — sleep time 3s → 5s, aur sirf market open pe ──
 if auto_refresh:
-    time.sleep(3)
-    st.rerun()
+    try:
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=5000, limit=None, key="auto_refresh_counter")
+    except ImportError:
+        # Fallback: agar streamlit_autorefresh install nahi hai
+        time.sleep(5)
+        st.rerun()
