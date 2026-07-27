@@ -516,28 +516,30 @@ st.markdown("""
 
     /* ══ TABS ══ */
     .stTabs [data-baseweb="tab-list"] {
-        background: rgba(9,21,37,0.8);
+        background: rgba(9,21,37,0.9);
         border-radius: 10px;
-        padding: 4px;
-        border: 1px solid rgba(29,78,216,0.15);
-        gap: 4px;
+        padding: 5px;
+        border: 1px solid rgba(29,78,216,0.35);
+        gap: 6px;
     }
     .stTabs [data-baseweb="tab"] {
-        background: transparent;
-        border: none;
-        color: #6495b8;
-        font-size: 13px;
-        font-weight: 600;
+        background: rgba(29,78,216,0.10);
+        border: 1px solid rgba(29,78,216,0.25);
+        color: #cfe3f5;
+        font-size: 14.5px;
+        font-weight: 800;
+        letter-spacing: 0.2px;
         border-radius: 8px;
-        padding: 8px 18px;
+        padding: 9px 20px;
         transition: all 0.2s;
         font-family: 'Inter', sans-serif;
     }
-    .stTabs [data-baseweb="tab"]:hover { background: rgba(29,78,216,0.08); color: #90b8d8; }
+    .stTabs [data-baseweb="tab"]:hover { background: rgba(29,78,216,0.22); color: #ffffff; border-color: rgba(29,78,216,0.5); }
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
         color: white !important;
-        box-shadow: 0 4px 12px rgba(29,78,216,0.4) !important;
+        border: 1px solid rgba(90,140,255,0.6) !important;
+        box-shadow: 0 4px 14px rgba(29,78,216,0.55) !important;
     }
 
     /* ══ BUTTONS ══ */
