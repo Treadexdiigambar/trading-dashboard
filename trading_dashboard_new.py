@@ -523,24 +523,34 @@ st.markdown("""
         gap: 6px;
     }
     .stTabs [data-baseweb="tab"] {
-        background: rgba(29,78,216,0.10);
-        border: 1px solid rgba(29,78,216,0.25);
-        color: #cfe3f5;
-        font-size: 14.5px;
-        font-weight: 800;
+        background: rgba(29,78,216,0.10) !important;
+        border: 1px solid rgba(29,78,216,0.25) !important;
+        color: #cfe3f5 !important;
+        font-size: 14.5px !important;
+        font-weight: 800 !important;
         letter-spacing: 0.2px;
         border-radius: 8px;
         padding: 9px 20px;
+        opacity: 1 !important;
         transition: all 0.2s;
         font-family: 'Inter', sans-serif;
     }
-    .stTabs [data-baseweb="tab"]:hover { background: rgba(29,78,216,0.22); color: #ffffff; border-color: rgba(29,78,216,0.5); }
+    .stTabs [data-baseweb="tab"] p {
+        color: #cfe3f5 !important;
+        font-size: 14.5px !important;
+        font-weight: 800 !important;
+        opacity: 1 !important;
+    }
+    .stTabs [data-baseweb="tab"] * { opacity: 1 !important; }
+    .stTabs [data-baseweb="tab"]:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
+    .stTabs [data-baseweb="tab"]:hover p { color: #ffffff !important; }
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
         color: white !important;
         border: 1px solid rgba(90,140,255,0.6) !important;
         box-shadow: 0 4px 14px rgba(29,78,216,0.55) !important;
     }
+    .stTabs [aria-selected="true"] p { color: white !important; }
 
     /* ══ BUTTONS ══ */
     .stButton > button {
