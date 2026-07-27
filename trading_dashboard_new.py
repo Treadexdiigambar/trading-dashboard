@@ -347,7 +347,7 @@ st.markdown("""
     /* ══ BASE & BACKGROUND ══ */
     .main, .stApp,
     [data-testid="stAppViewContainer"] {
-        background: radial-gradient(ellipse at 10% 0%, #0d1b2e 0%, #060a12 60%, #020408 100%) !important;
+        background: radial-gradient(ellipse at 10% 0%, #132844 0%, #0d1627 60%, #080f1e 100%) !important;
         font-family: 'Inter', sans-serif;
     }
 
@@ -380,7 +380,7 @@ st.markdown("""
 
     /* ══ GLOBAL SCROLLBAR ══ */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track { background: #0a0f1a; }
+    ::-webkit-scrollbar-track { background: #121b2e; }
     ::-webkit-scrollbar-thumb { background: #1d4ed8; border-radius: 4px; }
 
     /* ══ SECTION HEADERS ══ */
@@ -400,7 +400,7 @@ st.markdown("""
 
     /* ══ SPOT PRICE CARD ══ */
     .spot-card {
-        background: linear-gradient(135deg, #0f1e35 0%, #091525 100%);
+        background: linear-gradient(135deg, #152a4b 0%, #0e223c 100%);
         border: 1px solid rgba(29,78,216,0.3);
         border-radius: 14px;
         padding: 14px 22px;
@@ -480,7 +480,7 @@ st.markdown("""
 
     /* ══ METRICS ══ */
     div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, #0f1e35 0%, #091525 100%);
+        background: linear-gradient(135deg, #152a4b 0%, #0e223c 100%);
         border-radius: 12px;
         padding: 16px;
         border: 1px solid rgba(29,78,216,0.2);
@@ -505,7 +505,7 @@ st.markdown("""
 
     /* ══ METRIC CARD (custom) ══ */
     .metric-card {
-        background: linear-gradient(135deg, #0f1e35 0%, #091525 100%);
+        background: linear-gradient(135deg, #152a4b 0%, #0e223c 100%);
         border-radius: 12px;
         padding: 14px 16px;
         border: 1px solid rgba(29,78,216,0.18);
@@ -542,7 +542,7 @@ st.markdown("""
 
     /* ══ BUTTONS ══ */
     .stButton > button {
-        background: linear-gradient(135deg, #1a2e50 0%, #111e38 100%);
+        background: linear-gradient(135deg, #213a65 0%, #182a4e 100%);
         border: 1px solid rgba(29,78,216,0.25);
         color: #90b8d8;
         border-radius: 8px;
@@ -562,7 +562,7 @@ st.markdown("""
 
     /* ══ SELECTBOX ══ */
     .stSelectbox > div > div {
-        background: #0f1e35;
+        background: #152a4b;
         border: 1px solid rgba(29,78,216,0.25);
         border-radius: 8px;
         color: #90b8d8;
@@ -573,7 +573,7 @@ st.markdown("""
     .streamlit-expanderHeader,
     [data-testid="stExpander"] summary,
     details > summary {
-        background: linear-gradient(90deg, #1a3a6e 0%, #0f2348 100%) !important;
+        background: linear-gradient(90deg, #1a3a6e 0%, #142e5f 100%) !important;
         border-radius: 10px !important;
         border: 1.5px solid rgba(29,78,216,0.6) !important;
         color: #e8f4ff !important;
@@ -591,7 +591,7 @@ st.markdown("""
     [data-testid="stExpander"] {
         border: 1px solid rgba(29,78,216,0.25) !important;
         border-radius: 10px !important;
-        background: #0a1220 !important;
+        background: #111e35 !important;
     }
 
     /* ══ DIVIDER ══ */
@@ -640,7 +640,7 @@ st.markdown("""
     /* ══ DATAFRAME ══ */
     .stDataFrame { border-radius: 10px; overflow: hidden; border: 1px solid rgba(29,78,216,0.15) !important; }
     .stDataFrame thead tr th {
-        background: #0f1e35 !important;
+        background: #152a4b !important;
         color: #6495b8 !important;
         font-size: 11px !important;
         font-weight: 700 !important;
@@ -1607,7 +1607,7 @@ with hcol1:
 
 with hcol2:
     st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#0f1e35 0%,#091525 100%);border:1px solid rgba(29,78,216,0.2);border-radius:14px;padding:12px 18px;height:100%;box-shadow:0 4px 24px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.03)">
+    <div style="background:linear-gradient(135deg,#152a4b 0%,#0e223c 100%);border:1px solid rgba(29,78,216,0.2);border-radius:14px;padding:12px 18px;height:100%;box-shadow:0 4px 24px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.03)">
       <div style="font-size:12px;color:#8ab8d8;letter-spacing:3px;font-weight:800;text-transform:uppercase;margin-bottom:8px">MARKET STATUS</div>
       <div style="font-size:17px;font-weight:800;color:{mkt_color};display:flex;align-items:center;gap:4px">
         <span class="{mkt_dot}"></span>{mkt_icon} {mkt_status}
@@ -1687,7 +1687,7 @@ if not st.session_state.access_token:
     st.markdown("---")
     st.markdown("**⚙️ Manual Code — Agar automatic nahi hua:**")
     st.markdown("""
-    <div style='background:#0d1929;border-radius:8px;padding:12px 16px;font-size:13px;color:#90b8d8;border:1px solid rgba(29,78,216,0.2);margin-bottom:10px'>
+    <div style='background:#14263e;border-radius:8px;padding:12px 16px;font-size:13px;color:#90b8d8;border:1px solid rgba(29,78,216,0.2);margin-bottom:10px'>
     1. Upstox login ke baad URL kuch aisa dikhega:<br>
     <code style='color:#00e676'>https://trading-dashboard-...streamlit.app/?code=<b>YAHAN_WALA_CODE_COPY_KARO</b></code><br><br>
     2. Sirf <b style='color:#ffd600'>?code= ke baad wala part</b> copy karo (pura lamba string)<br>
@@ -1901,7 +1901,7 @@ bn_chg_str = f"{bn_arrow} {abs(bn_chg):,.1f} ({abs(bn_pct):.2f}%)" if bn_chg is 
 sx_chg_str = f"{sx_arrow} {abs(sx_chg):,.1f} ({abs(sx_pct):.2f}%)" if sx_chg is not None else ""
 
 st.markdown(f"""
-<div style="background:linear-gradient(90deg,#080e1c 0%,#060a14 100%);border:1px solid rgba(29,78,216,0.2);border-radius:12px;padding:12px 22px;margin-bottom:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
+<div style="background:linear-gradient(90deg,#0e1932 0%,#0c152a 100%);border:1px solid rgba(29,78,216,0.2);border-radius:12px;padding:12px 22px;margin-bottom:10px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
   <div style="display:flex;align-items:stretch;gap:28px">
     <div>
       <div style="font-size:11px;color:#8ab8d8;letter-spacing:3px;margin-bottom:3px;font-weight:700;text-transform:uppercase">NIFTY 50</div>
@@ -2001,7 +2001,7 @@ with col4:
         vix_mood  = "😱 HIGH FEAR" if vix_val > 20 else ("⚠️ CAUTION" if vix_val > 15 else "😊 LOW FEAR")
         vix_arrow = "▲" if vix_chg >= 0 else "▼"
         st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#0f1e35 0%,#091525 100%);border-radius:14px;padding:14px 16px;border:1.5px solid {vix_col}40;box-shadow:0 6px 24px rgba(0,0,0,0.4),0 0 20px {vix_col}08;margin-bottom:8px">
+        <div style="background:linear-gradient(135deg,#152a4b 0%,#0e223c 100%);border-radius:14px;padding:14px 16px;border:1.5px solid {vix_col}40;box-shadow:0 6px 24px rgba(0,0,0,0.4),0 0 20px {vix_col}08;margin-bottom:8px">
           <div style="font-size:13px;color:#90b8d8;text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;font-weight:800">😨 INDIA VIX</div>
           <div style="font-family:'JetBrains Mono',monospace;font-size:30px;font-weight:900;color:{vix_col};line-height:1">{vix_val:.2f}</div>
           <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:{vix_col};margin-top:3px">{vix_arrow} {abs(vix_chg):.2f}%</div>
@@ -2009,7 +2009,7 @@ with col4:
           <div style="font-size:9px;color:#4e7a96;margin-top:6px;font-family:'JetBrains Mono',monospace">H: {vix_data.get('high','--')} · L: {vix_data.get('low','--')}</div>
         </div>""", unsafe_allow_html=True)
     else:
-        st.markdown('<div style="background:#0d1929;border-radius:10px;padding:12px;border:1px solid #ff8c0055;color:#ff8c00;font-size:11px">😨 VIX<br>⚠️ NSE blocked<br><span style="color:#6495b8;font-size:10px">Network pe NSE restricted hai</span></div>', unsafe_allow_html=True)
+        st.markdown('<div style="background:#14263e;border-radius:10px;padding:12px;border:1px solid #ff8c0055;color:#ff8c00;font-size:11px">😨 VIX<br>⚠️ NSE blocked<br><span style="color:#6495b8;font-size:10px">Network pe NSE restricted hai</span></div>', unsafe_allow_html=True)
 
     # Watchlist removed
 
@@ -2040,7 +2040,7 @@ for tab, instrument, name, spot in [
 
         if tab_chg is not None:
             st.markdown(f"""
-            <div style="background:#0d1929;border-radius:10px;padding:12px 18px;margin-bottom:12px;border:1px solid rgba(29,78,216,0.15);border-left:4px solid {tab_color}">
+            <div style="background:#14263e;border-radius:10px;padding:12px 18px;margin-bottom:12px;border:1px solid rgba(29,78,216,0.15);border-left:4px solid {tab_color}">
               <div style="display:flex;justify-content:space-between;align-items:center">
                 <div>
                   <div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:2px">{tab_icon} {name} — Live Analysis</div>
@@ -2054,7 +2054,7 @@ for tab, instrument, name, spot in [
             </div>""", unsafe_allow_html=True)
         else:
             st.markdown(f"""
-            <div style="background:#0d1929;border-radius:10px;padding:12px 18px;margin-bottom:12px;border:1px solid rgba(29,78,216,0.15);border-left:4px solid {tab_color}">
+            <div style="background:#14263e;border-radius:10px;padding:12px 18px;margin-bottom:12px;border:1px solid rgba(29,78,216,0.15);border-left:4px solid {tab_color}">
               <div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:2px">{tab_icon} {name} — Live Analysis</div>
               <div style="font-size:28px;font-weight:900;color:{tab_color}">{tab_price}</div>
             </div>""", unsafe_allow_html=True)
@@ -2081,7 +2081,7 @@ for tab, instrument, name, spot in [
                 )
             with col_exp2:
                 st.markdown(f"""
-                <div style="background:#0d1929;border-radius:8px;padding:10px 14px;border:1px solid rgba(29,78,216,0.15);margin-top:24px">
+                <div style="background:#14263e;border-radius:8px;padding:10px 14px;border:1px solid rgba(29,78,216,0.15);margin-top:24px">
                   <span style="font-size:11px;color:#6495b8">Available Expiries: </span>
                   {'&nbsp;&nbsp;'.join([f'<span style="color:{"#00e676" if e == selected_expiry else "#6495b8"};font-size:12px;font-weight:{"bold" if e == selected_expiry else "normal"}">{e}</span>' for e in all_expiries[:8]])}
                 </div>""", unsafe_allow_html=True)
@@ -2227,7 +2227,7 @@ for tab, instrument, name, spot in [
             if result["max_pain"]:
                 st.markdown(f'<div class="fair-value">Max Pain<br><span style="font-size:32px;font-weight:900">{int(result["max_pain"]):,}</span></div>', unsafe_allow_html=True)
             if spot and result["atm_strike"]:
-                st.markdown(f'<div style="margin-top:8px;padding:8px;background:#0d1929;border-radius:8px;text-align:center;border:1px solid rgba(29,78,216,0.15);color:white;font-size:13px">ATM: <b>{int(result["atm_strike"]):,}</b> | Spot: <b>{spot:,.0f}</b></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="margin-top:8px;padding:8px;background:#14263e;border-radius:8px;text-align:center;border:1px solid rgba(29,78,216,0.15);color:white;font-size:13px">ATM: <b>{int(result["atm_strike"]):,}</b> | Spot: <b>{spot:,.0f}</b></div>', unsafe_allow_html=True)
         with kc3:
             st.markdown("**🟢 Support** *(Max Put OI)*")
             for s in result["support_levels"]:
@@ -2333,24 +2333,24 @@ for tab, instrument, name, spot in [
                     <div style="font-size:10px;color:{c_scol};background:{c_scol}18;padding:2px 8px;border-radius:10px;border:1px solid {c_scol}40">{c_stype}</div>
                   </div>
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                    <div style="background:#060e1a;border-radius:8px;padding:10px;text-align:center">
+                    <div style="background:#0b1a31;border-radius:8px;padding:10px;text-align:center">
                       <div style="font-size:10px;color:#6495b8;margin-bottom:3px">💰 LTP</div>
                       <div style="font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:900;color:#ff5252">₹{c_ltp_s2}</div>
                     </div>
-                    <div style="background:#060e1a;border-radius:8px;padding:10px;text-align:center">
+                    <div style="background:#0b1a31;border-radius:8px;padding:10px;text-align:center">
                       <div style="font-size:10px;color:#6495b8;margin-bottom:3px">📊 Volume</div>
                       <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:#ff8888">{fmtn2(c_vol_s2)}</div>
                     </div>
-                    <div style="background:#060e1a;border-radius:8px;padding:10px;text-align:center">
+                    <div style="background:#0b1a31;border-radius:8px;padding:10px;text-align:center">
                       <div style="font-size:10px;color:#6495b8;margin-bottom:3px">📈 OI</div>
                       <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#ff5252">{fmtn2(c_oi_s2)}</div>
                     </div>
-                    <div style="background:#060e1a;border-radius:8px;padding:10px;text-align:center">
+                    <div style="background:#0b1a31;border-radius:8px;padding:10px;text-align:center">
                       <div style="font-size:10px;color:#6495b8;margin-bottom:3px">🔄 OI Change</div>
                       <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:{c_chg_col2}">{"▲" if c_chg_s2>0 else "▼"} {fmtn2(abs(c_chg_s2))}</div>
                     </div>
                   </div>
-                  <div style="margin-top:8px;padding:6px;background:#060e1a;border-radius:6px;text-align:center;font-size:11px;color:#6495b8">
+                  <div style="margin-top:8px;padding:6px;background:#0b1a31;border-radius:6px;text-align:center;font-size:11px;color:#6495b8">
                     IV: <b style="color:#ff5252">{c_iv_s2:.1f}%</b> &nbsp;|&nbsp;
                     {"🔴 Short Build Up" if c_chg_s2>0 else "🟠 Long Unwind" if c_chg_s2<0 else "⚪ No Change"}
                   </div>
@@ -2364,24 +2364,24 @@ for tab, instrument, name, spot in [
                     <div style="font-size:10px;color:{p_scol};background:{p_scol}18;padding:2px 8px;border-radius:10px;border:1px solid {p_scol}40">{p_stype}</div>
                   </div>
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                    <div style="background:#060e1a;border-radius:8px;padding:10px;text-align:center">
+                    <div style="background:#0b1a31;border-radius:8px;padding:10px;text-align:center">
                       <div style="font-size:10px;color:#6495b8;margin-bottom:3px">💰 LTP</div>
                       <div style="font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:900;color:#00e676">₹{p_ltp_s2}</div>
                     </div>
-                    <div style="background:#060e1a;border-radius:8px;padding:10px;text-align:center">
+                    <div style="background:#0b1a31;border-radius:8px;padding:10px;text-align:center">
                       <div style="font-size:10px;color:#6495b8;margin-bottom:3px">📊 Volume</div>
                       <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:#88ff88">{fmtn2(p_vol_s2)}</div>
                     </div>
-                    <div style="background:#060e1a;border-radius:8px;padding:10px;text-align:center">
+                    <div style="background:#0b1a31;border-radius:8px;padding:10px;text-align:center">
                       <div style="font-size:10px;color:#6495b8;margin-bottom:3px">📈 OI</div>
                       <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#00e676">{fmtn2(p_oi_s2)}</div>
                     </div>
-                    <div style="background:#060e1a;border-radius:8px;padding:10px;text-align:center">
+                    <div style="background:#0b1a31;border-radius:8px;padding:10px;text-align:center">
                       <div style="font-size:10px;color:#6495b8;margin-bottom:3px">🔄 OI Change</div>
                       <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:{p_chg_col2}">{"▲" if p_chg_s2>0 else "▼"} {fmtn2(abs(p_chg_s2))}</div>
                     </div>
                   </div>
-                  <div style="margin-top:8px;padding:6px;background:#060e1a;border-radius:6px;text-align:center;font-size:11px;color:#6495b8">
+                  <div style="margin-top:8px;padding:6px;background:#0b1a31;border-radius:6px;text-align:center;font-size:11px;color:#6495b8">
                     IV: <b style="color:#00e676">{p_iv_s2:.1f}%</b> &nbsp;|&nbsp;
                     {"🟢 Long Build Up" if p_chg_s2>0 else "🟠 Short Cover" if p_chg_s2<0 else "⚪ No Change"}
                   </div>
@@ -2419,11 +2419,11 @@ for tab, instrument, name, spot in [
 
             sm1, sm2, sm3 = st.columns(3)
             with sm1:
-                st.markdown(f'<div style="background:#2d0a0a;border:1px solid #ff525230;border-radius:10px;padding:12px;text-align:center"><div style="font-size:10px;color:#ff525260;text-transform:uppercase;margin-bottom:4px">🔴 MEHNGA</div><div style="font-size:24px;font-weight:bold;color:#ff5252">{mehnga}</div><div style="font-size:10px;color:#ff525260">Options costly hain</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#440f0f;border:1px solid #ff525230;border-radius:10px;padding:12px;text-align:center"><div style="font-size:10px;color:#ff525260;text-transform:uppercase;margin-bottom:4px">🔴 MEHNGA</div><div style="font-size:24px;font-weight:bold;color:#ff5252">{mehnga}</div><div style="font-size:10px;color:#ff525260">Options costly hain</div></div>', unsafe_allow_html=True)
             with sm2:
-                st.markdown(f'<div style="background:#0a2d15;border:1px solid #00e67630;border-radius:10px;padding:12px;text-align:center"><div style="font-size:10px;color:#00e67660;text-transform:uppercase;margin-bottom:4px">🟢 SASTA</div><div style="font-size:24px;font-weight:bold;color:#00e676">{sasta}</div><div style="font-size:10px;color:#00e67660">Options cheap hain</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#0f4420;border:1px solid #00e67630;border-radius:10px;padding:12px;text-align:center"><div style="font-size:10px;color:#00e67660;text-transform:uppercase;margin-bottom:4px">🟢 SASTA</div><div style="font-size:24px;font-weight:bold;color:#00e676">{sasta}</div><div style="font-size:10px;color:#00e67660">Options cheap hain</div></div>', unsafe_allow_html=True)
             with sm3:
-                st.markdown(f'<div style="background:#1a1a2d;border:1px solid #6495b830;border-radius:10px;padding:12px;text-align:center"><div style="font-size:10px;color:#6495b8;text-transform:uppercase;margin-bottom:4px">⚪ FAIR</div><div style="font-size:24px;font-weight:bold;color:#90b8d8">{fair_c}</div><div style="font-size:10px;color:#6495b8">Fair price pe hain</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#24243f;border:1px solid #6495b830;border-radius:10px;padding:12px;text-align:center"><div style="font-size:10px;color:#6495b8;text-transform:uppercase;margin-bottom:4px">⚪ FAIR</div><div style="font-size:24px;font-weight:bold;color:#90b8d8">{fair_c}</div><div style="font-size:10px;color:#6495b8">Fair price pe hain</div></div>', unsafe_allow_html=True)
 
             # Build table
             fv_rows = []
@@ -2450,7 +2450,7 @@ for tab, instrument, name, spot in [
             tbl_rows_html = ""
             for r in fv_rows:
                 is_atm   = "⭐" in r["Strike"]
-                row_bg   = "background:#1a1500;" if is_atm else ""
+                row_bg   = "background:#362c00;" if is_atm else ""
                 row_bdr  = "border-left:3px solid #ffd600;" if is_atm else "border-left:3px solid transparent;"
 
                 # C Diff color
@@ -2491,7 +2491,7 @@ for tab, instrument, name, spot in [
 
             st.markdown(f"""
             <div style="overflow-x:auto;border-radius:12px;border:1px solid rgba(29,78,216,0.2);margin-top:10px">
-              <table style="width:100%;border-collapse:collapse;background:#060e1a;font-family:'Inter',sans-serif">
+              <table style="width:100%;border-collapse:collapse;background:#0b1a31;font-family:'Inter',sans-serif">
                 <thead>
                   <tr style="background:rgba(29,78,216,0.15);border-bottom:1px solid rgba(29,78,216,0.3)">
                     <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Call LTP</th>
@@ -2581,12 +2581,12 @@ for tab, instrument, name, spot in [
                     oi_chg_available = result["atm_call_chg"] != 0 or result["atm_put_chg"] != 0
                     active_label = "" if oi_chg_available else " ⏳ (2+ refreshes ke baad)"
                     st.markdown(f"""
-                    <div style="background:#0d1929;border-radius:8px;padding:10px 14px;margin:10px 0;font-size:13px;border-left:3px solid #ffd600;color:white">
+                    <div style="background:#14263e;border-radius:8px;padding:10px 14px;margin:10px 0;font-size:13px;border-left:3px solid #ffd600;color:white">
                       🔴 Max Resistance: <b style="color:#ff5252">{top_call_strike}</b> &nbsp;|&nbsp;
                       🟢 Max Support: <b style="color:#00e676">{top_put_strike}</b> &nbsp;|&nbsp;
                       📦 Range: <b style="color:#ffd600">{top_put_strike} — {top_call_strike}</b>
                     </div>
-                    <div style="background:#0d1929;border-radius:8px;padding:10px 14px;margin:4px 0 10px;font-size:13px;border-left:3px solid #a78bfa;color:white">
+                    <div style="background:#14263e;border-radius:8px;padding:10px 14px;margin:4px 0 10px;font-size:13px;border-left:3px solid #a78bfa;color:white">
                       🔴 Active Writing: <b style="color:#ff5252">{top_call_chg_strike}</b> &nbsp;|&nbsp;
                       🟢 Active Support: <b style="color:#00e676">{top_put_chg_strike}</b> &nbsp;|&nbsp;
                       📊 Active Range: <b style="color:#a78bfa">{top_put_chg_strike} — {top_call_chg_strike}</b>
@@ -2635,7 +2635,7 @@ for tab, instrument, name, spot in [
                                      annotation_text="⭐ Max Pain " + str(max_pain), annotation_font_color="#ff9500")
                 fig_oi.update_layout(
                     title=dict(text=chart_title, font=dict(size=14, color="#90b8d8", family="Inter")),
-                    barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#060e1a",
+                    barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#0b1a31",
                     font=dict(color="#7aa0be", family="Inter"), height=440,
                     margin=dict(l=10, r=10, t=50, b=10),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
@@ -2680,7 +2680,7 @@ for tab, instrument, name, spot in [
                         _ago = int(time.time() - _last_save_ts)
                         _ago_str = f"{_ago}s ago" if _ago < 60 else f"{_ago//60}m ago"
                         st.markdown(f"""
-                        <div style="background:#0d1929;border-radius:6px;padding:7px 12px;border:1px solid rgba(0,230,118,0.2);margin-top:4px;font-size:11px">
+                        <div style="background:#14263e;border-radius:6px;padding:7px 12px;border:1px solid rgba(0,230,118,0.2);margin-top:4px;font-size:11px">
                           <span style="color:#00e676">🟢 Auto Save ON</span>
                           <span style="color:#6495b8;margin-left:8px">Last: {_ago_str}</span>
                           {'<span style="color:#00e676;margin-left:8px">' + _msg + '</span>' if _msg else ''}
@@ -2688,7 +2688,7 @@ for tab, instrument, name, spot in [
                         </div>""", unsafe_allow_html=True)
                     else:
                         st.markdown(f"""
-                        <div style="background:#0d1929;border-radius:6px;padding:7px 12px;border:1px solid rgba(255,214,0,0.2);margin-top:4px;font-size:11px">
+                        <div style="background:#14263e;border-radius:6px;padding:7px 12px;border:1px solid rgba(255,214,0,0.2);margin-top:4px;font-size:11px">
                           <span style="color:#ffd600">⏳ Pehla save pending...</span>
                           <span style="color:#4e7a96;margin-left:8px">📁 option_data/{name.replace(" ","_")}/</span>
                         </div>""", unsafe_allow_html=True)
@@ -2782,7 +2782,7 @@ for tab, instrument, name, spot in [
                     is_max_c = raw_r["Call OI"] == max_call_oi
                     is_max_p = raw_r["Put OI"]  == max_put_oi
                     row_bg   = "background:rgba(255,214,0,0.06);" if is_atm_r else (
-                               "background:#060e1a;" if idx % 2 == 0 else "background:#0a1525;")
+                               "background:#0b1a31;" if idx % 2 == 0 else "background:#10223b;")
 
                     cells = ""
                     for ci, col in enumerate(cols_order):
@@ -2815,7 +2815,7 @@ for tab, instrument, name, spot in [
                     rows_html += '<tr style="' + row_bg + '">' + cells + '</tr>'
 
                 oi_tbl_html  = '<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.2);margin-top:6px">'
-                oi_tbl_html += '<table style="width:100%;border-collapse:collapse;background:#060e1a">'
+                oi_tbl_html += '<table style="width:100%;border-collapse:collapse;background:#0b1a31">'
                 oi_tbl_html += '<thead><tr>' + hdr_html + '</tr></thead>'
                 oi_tbl_html += '<tbody>' + rows_html + '</tbody>'
                 oi_tbl_html += '</table></div>'
@@ -2848,7 +2848,7 @@ for tab, instrument, name, spot in [
 
                             pcr_color  = "#00e676" if h_pcr >= 1.0 else ("#ff5252" if h_pcr <= 0.8 else "#ffd600")
                             pcr_label  = "Bullish" if h_pcr >= 1.0 else ("Bearish" if h_pcr <= 0.8 else "Neutral")
-                            row_bg     = "#0d1929" if i % 2 == 0 else "#060e1a"
+                            row_bg     = "#14263e" if i % 2 == 0 else "#0b1a31"
                             is_today   = d == str(date.today())
                             row_border = "border-left:3px solid #ffd600;" if is_today else ""
                             today_mark = " 🔵 Today" if is_today else ""
@@ -2907,7 +2907,7 @@ for tab, instrument, name, spot in [
                     range_size = day_high - day_low
                     spot_pos   = round((spot - day_low) / range_size * 100, 1) if range_size > 0 else 50
                     st.markdown(f"""
-                    <div style="background:#0d1929;border-radius:10px;padding:14px 18px;border:1px solid rgba(29,78,216,0.15)">
+                    <div style="background:#14263e;border-radius:10px;padding:14px 18px;border:1px solid rgba(29,78,216,0.15)">
                       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                         <div style="text-align:center">
                           <div style="font-size:10px;color:#6495b8;margin-bottom:3px">DAY LOW</div>
@@ -2926,7 +2926,7 @@ for tab, instrument, name, spot in [
                           <div style="font-size:24px;font-weight:900;color:#ff5252">{day_high:,.2f}</div>
                         </div>
                       </div>
-                      <div style="background:#060e1a;border-radius:6px;height:12px;overflow:hidden;position:relative">
+                      <div style="background:#0b1a31;border-radius:6px;height:12px;overflow:hidden;position:relative">
                         <div style="width:{spot_pos}%;background:linear-gradient(90deg,#00e676,#00bfff);height:100%;border-radius:6px;transition:width 0.5s"></div>
                       </div>
                       <div style="display:flex;justify-content:space-between;font-size:10px;color:#6495b8;margin-top:4px">
@@ -2970,7 +2970,7 @@ if fii_dii:
             if is_unavailable:
                 icon = "🏦" if "FII" in category else "🏢"
                 st.markdown(f"""
-                <div style="background:linear-gradient(135deg,#0f1e35 0%,#080e1e 100%);border-radius:14px;padding:18px 22px;margin:10px 0;border:1px solid rgba(255,153,0,0.2)">
+                <div style="background:linear-gradient(135deg,#152a4b 0%,#0e1834 100%);border-radius:14px;padding:18px 22px;margin:10px 0;border:1px solid rgba(255,153,0,0.2)">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                     <div style="font-size:17px;font-weight:800;color:#c8dff5">{icon} {category}</div>
                     <div style="font-size:10px;color:#ff9900;background:rgba(255,153,0,0.1);padding:3px 10px;border-radius:20px;border:1px solid rgba(255,153,0,0.3)">⏳ Data unavailable</div>
@@ -2990,7 +2990,7 @@ if fii_dii:
             icon       = "🏦" if "FII" in category else "🏢"
             action     = "BUY kar rahe hain 🟢" if is_pos else "SELL kar rahe hain 🔴"
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#0f1e35 0%,#080e1e 100%);border-radius:14px;padding:18px 22px;margin:10px 0;border:1px solid rgba(29,78,216,0.15);box-shadow:0 6px 24px rgba(0,0,0,0.4)">
+            <div style="background:linear-gradient(135deg,#152a4b 0%,#0e1834 100%);border-radius:14px;padding:18px 22px;margin:10px 0;border:1px solid rgba(29,78,216,0.15);box-shadow:0 6px 24px rgba(0,0,0,0.4)">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                 <div style="font-size:17px;font-weight:800;color:#c8dff5;letter-spacing:-0.3px">{icon} {category}</div>
                 <div style="font-size:10px;color:#4e7a96;background:rgba(29,78,216,0.08);padding:3px 10px;border-radius:20px;border:1px solid rgba(29,78,216,0.2)">📅 {date_val}</div>
@@ -3043,7 +3043,7 @@ with tab4:
         import random as _random
 
         st.markdown("""
-        <div style="background:#0d1929;border-radius:10px;padding:12px 18px;margin-bottom:14px;
+        <div style="background:#14263e;border-radius:10px;padding:12px 18px;margin-bottom:14px;
                     border:1px solid rgba(255,150,0,0.25);border-left:4px solid #ff9500">
           <div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">
             🔥 Order Flow Heatmap — Candle by Candle
@@ -3162,7 +3162,7 @@ with tab4:
         # Card 1 — Instrument + LTP
         with sc1:
             st.markdown(f"""
-            <div style="background:#0d1929;border-radius:8px;padding:10px 12px;
+            <div style="background:#14263e;border-radius:8px;padding:10px 12px;
                         border:1px solid rgba(29,78,216,0.18);margin-bottom:8px">
               <div style="font-size:10px;color:#6495b8;margin-bottom:3px">Instrument / LTP</div>
               <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:2px">{hm_name}</div>
@@ -3176,7 +3176,7 @@ with tab4:
             (sc5, "Bias",        bias_label,                         bias_color),
         ]:
             col.markdown(f"""
-            <div style="background:#0d1929;border-radius:8px;padding:10px 12px;
+            <div style="background:#14263e;border-radius:8px;padding:10px 12px;
                         border:1px solid rgba(29,78,216,0.18);margin-bottom:8px">
               <div style="font-size:10px;color:#6495b8;margin-bottom:3px">{label}</div>
               <div style="font-size:16px;font-weight:900;color:{color}">{val}</div>
@@ -3185,7 +3185,7 @@ with tab4:
         # Card 6 — 🔥 Dominant Order Flow Zone
         with sc6:
             st.markdown(f"""
-            <div style="background:#0d1929;border-radius:8px;padding:10px 12px;
+            <div style="background:#14263e;border-radius:8px;padding:10px 12px;
                         border:2px solid {dz_border};margin-bottom:8px;
                         box-shadow:0 0 12px {dz_border}">
               <div style="font-size:10px;color:#6495b8;margin-bottom:3px">🔥 Max Order Flow Zone</div>
@@ -3265,7 +3265,7 @@ with tab4:
                     arrowcolor="#ffd600",
                     ay=-28, ax=0,
                     font=dict(color="#ffd600", size=10, family="JetBrains Mono"),
-                    bgcolor="#0d1929",
+                    bgcolor="#14263e",
                     bordercolor="#ffd600",
                     borderwidth=1,
                     borderpad=3,
@@ -3327,7 +3327,7 @@ with tab4:
             text=f"🔥 Max Zone ₹{dz_price:,.0f}",
             showarrow=False,
             font=dict(color=dz_line_clr, size=10, family="JetBrains Mono"),
-            bgcolor="#060a12",
+            bgcolor="#0d1627",
             bordercolor=dz_line_clr,
             borderwidth=1,
             borderpad=3,
@@ -3412,8 +3412,8 @@ with tab4:
 
         fig_hm.update_layout(
             height=480,
-            paper_bgcolor="#060a12",
-            plot_bgcolor="#060a12",
+            paper_bgcolor="#0d1627",
+            plot_bgcolor="#0d1627",
             font=dict(color="#8ab8d8", size=11),
             margin=dict(l=65, r=20, t=20, b=30),
             xaxis=dict(
@@ -3431,7 +3431,7 @@ with tab4:
             ),
             hovermode="closest",
             hoverlabel=dict(
-                bgcolor="#0d1929",
+                bgcolor="#14263e",
                 bordercolor="#1d4ed8",
                 font=dict(color="#e8f4ff", size=12),
             ),
@@ -3460,7 +3460,7 @@ with tab4:
                         color:#ff8282;letter-spacing:1px;border-bottom:1px solid rgba(255,82,82,0.2)">
               🔴 RESISTANCE LEVELS (Swing Highs)
             </div>
-            <table style="width:100%;border-collapse:collapse;background:#080f1a">
+            <table style="width:100%;border-collapse:collapse;background:#0f1b2f">
               <tbody>{r_rows if r_rows else "<tr><td colspan='5' style='padding:10px;color:#4e7a96;font-size:11px;text-align:center'>Koi swing high nahi mila</td></tr>"}</tbody>
             </table>
             </div>""", unsafe_allow_html=True)
@@ -3483,7 +3483,7 @@ with tab4:
                         color:#66bb6a;letter-spacing:1px;border-bottom:1px solid rgba(0,230,118,0.2)">
               🟢 SUPPORT LEVELS (Swing Lows)
             </div>
-            <table style="width:100%;border-collapse:collapse;background:#080f1a">
+            <table style="width:100%;border-collapse:collapse;background:#0f1b2f">
               <tbody>{s_rows if s_rows else "<tr><td colspan='5' style='padding:10px;color:#4e7a96;font-size:11px;text-align:center'>Koi swing low nahi mila</td></tr>"}</tbody>
             </table>
             </div>""", unsafe_allow_html=True)
@@ -3523,7 +3523,7 @@ with tab4:
                 </tr>"""
             st.markdown(f"""
             <div style="overflow-x:auto;border-radius:8px;border:1px solid rgba(29,78,216,0.15)">
-            <table style="width:100%;border-collapse:collapse;background:#0a1220;font-family:'Inter',sans-serif">
+            <table style="width:100%;border-collapse:collapse;background:#111e35;font-family:'Inter',sans-serif">
               <thead>
                 <tr style="background:rgba(29,78,216,0.12);border-bottom:1px solid rgba(29,78,216,0.25)">
                   <th style="padding:7px 10px;text-align:left;color:#4e7a96;font-size:10px">#</th>
@@ -3660,7 +3660,7 @@ with st.expander("➕ Trade Form Kholein", expanded=False):
             pnl_col_prev  = "#00e676" if pnl_preview >= 0 else "#ff5252"
             pnl_sign_prev = "+" if pnl_preview >= 0 else ""
             st.markdown(f"""
-            <div style="background:#060e1a;border:1px solid #1d4ed840;border-radius:8px;padding:10px 16px;display:flex;gap:32px;margin-top:6px">
+            <div style="background:#0b1a31;border:1px solid #1d4ed840;border-radius:8px;padding:10px 16px;display:flex;gap:32px;margin-top:6px">
                 <div><div style="font-size:10px;color:#6495b8">Estimated P&amp;L</div>
                      <div style="font-size:18px;font-weight:900;color:{pnl_col_prev};font-family:'JetBrains Mono',monospace">{pnl_sign_prev}₹{pnl_preview:,.0f}</div></div>
                 <div><div style="font-size:10px;color:#6495b8">Return %</div>
@@ -3732,7 +3732,7 @@ elif st.session_state.tj_filter == "today":
     display_trades = [t for t in display_trades if t["date"] == today_str_tj]
 
 if not display_trades:
-    st.markdown('<div style="background:#0f1e3580;border:1px solid #1d4ed830;border-radius:8px;padding:20px;text-align:center;color:#6495b8;font-size:13px">Koi trade nahi mila — upar form se add karo</div>', unsafe_allow_html=True)
+    st.markdown('<div style="background:#152a4b80;border:1px solid #1d4ed830;border-radius:8px;padding:20px;text-align:center;color:#6495b8;font-size:13px">Koi trade nahi mila — upar form se add karo</div>', unsafe_allow_html=True)
 else:
     # Build HTML table
     rows_html = ""
@@ -3761,7 +3761,7 @@ else:
 
     st.markdown(f"""
     <div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(29,78,216,0.15)">
-    <table style="width:100%;border-collapse:collapse;background:#0a1220;font-family:'Inter',sans-serif">
+    <table style="width:100%;border-collapse:collapse;background:#111e35;font-family:'Inter',sans-serif">
       <thead>
         <tr style="background:rgba(29,78,216,0.12);border-bottom:1px solid rgba(29,78,216,0.25)">
           <th style="padding:8px 10px;text-align:left;color:#4e7a96;font-size:10px;text-transform:uppercase;letter-spacing:1px">Date</th>
@@ -3844,7 +3844,7 @@ if ticker_data:
     st.markdown(f"""
     <div style="
         position:fixed; bottom:0; left:0; right:0; z-index:9999;
-        background:linear-gradient(90deg,#020810 0%,#06101c 50%,#020810 100%);
+        background:linear-gradient(90deg,#051429 0%,#0b1d33 50%,#051429 100%);
         border-top:1px solid rgba(29,78,216,0.4);
         padding:0;
         height:38px;
@@ -3854,7 +3854,7 @@ if ticker_data:
       <!-- Next update countdown -->
       <div style="
           position:absolute; right:12px; top:50%; transform:translateY(-50%);
-          font-size:9px; color:#1d4ed8; z-index:10000; background:#020810;
+          font-size:9px; color:#1d4ed8; z-index:10000; background:#051429;
           padding:3px 10px; border-left:1px solid rgba(29,78,216,0.2);
           font-family:'JetBrains Mono',monospace; letter-spacing:1px;
       ">🔄 {next_upd}</div>
@@ -3888,7 +3888,7 @@ else:
     st.markdown("""
     <div style="
         position:fixed; bottom:0; left:0; right:0; z-index:9999;
-        background:#0a0e1a; border-top:2px solid rgba(29,78,216,0.15);
+        background:#12192e; border-top:2px solid rgba(29,78,216,0.15);
         height:36px; display:flex; align-items:center; padding:0 16px;
         font-size:12px; color:#6495b8;
     ">
