@@ -515,14 +515,15 @@ st.markdown("""
     .metric-card:hover { transform: translateY(-1px); border-color: rgba(45,163,153,0.45); }
 
     /* ══ TABS ══ */
-    .stTabs [data-baseweb="tab-list"] {
+    .stTabs [data-baseweb="tab-list"],
+    .stTabs div[role="tablist"] {
         background: rgba(9,21,37,0.9);
         border-radius: 10px;
         padding: 5px;
         border: 1px solid rgba(29,78,216,0.35);
         gap: 6px;
     }
-    .stTabs [data-baseweb="tab"] {
+    .stTabs button[role="tab"] {
         background: rgba(29,78,216,0.10) !important;
         border: 1px solid rgba(29,78,216,0.25) !important;
         color: #e8f4ff !important;
@@ -535,17 +536,19 @@ st.markdown("""
         transition: all 0.2s;
         font-family: 'Inter', sans-serif;
     }
-    .stTabs [data-baseweb="tab"] p {
+    .stTabs button[role="tab"] p,
+    .stTabs button[role="tab"] span,
+    .stTabs button[role="tab"] div {
         color: #e8f4ff !important;
         font-size: 16px !important;
         font-weight: 800 !important;
         opacity: 1 !important;
     }
-    .stTabs [data-baseweb="tab"] * { opacity: 1 !important; color: inherit !important; }
-    .stTabs [data-baseweb="tab"] span,
-    .stTabs [data-baseweb="tab"] div { color: #e8f4ff !important; font-size: 16px !important; font-weight: 800 !important; }
-    .stTabs [aria-selected="true"] span,
-    .stTabs [aria-selected="true"] div { color: #ffffff !important; }
+    .stTabs button[role="tab"] * { opacity: 1 !important; }
+    .stTabs button[role="tab"]:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
+    .stTabs button[role="tab"]:hover p,
+    .stTabs button[role="tab"]:hover span,
+    .stTabs button[role="tab"]:hover div { color: #ffffff !important; }
 
     /* ══ WIDGET LABELS (e.g. "Expiry Select Karo:") ══ */
     [data-testid="stWidgetLabel"] p,
@@ -556,15 +559,15 @@ st.markdown("""
         font-size: 15px !important;
         opacity: 1 !important;
     }
-    .stTabs [data-baseweb="tab"]:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
-    .stTabs [data-baseweb="tab"]:hover p { color: #ffffff !important; }
-    .stTabs [aria-selected="true"] {
+    .stTabs button[role="tab"][aria-selected="true"] {
         background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
         color: white !important;
         border: 1px solid rgba(90,140,255,0.6) !important;
         box-shadow: 0 4px 14px rgba(29,78,216,0.55) !important;
     }
-    .stTabs [aria-selected="true"] p { color: white !important; }
+    .stTabs button[role="tab"][aria-selected="true"] p,
+    .stTabs button[role="tab"][aria-selected="true"] span,
+    .stTabs button[role="tab"][aria-selected="true"] div { color: white !important; }
 
     /* ══ BUTTONS ══ */
     .stButton > button {
