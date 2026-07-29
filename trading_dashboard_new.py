@@ -517,10 +517,11 @@ st.markdown("""
     /* ══ TABS ══ */
     .stTabs [data-baseweb="tab-list"],
     .stTabs div[role="tablist"] {
-        background: rgba(9,21,37,0.9);
-        border-radius: 10px;
-        padding: 5px;
-        border: 1px solid rgba(29,78,216,0.35);
+        background: linear-gradient(135deg, #101c22 0%, #0a1220 100%) !important;
+        border-radius: 12px !important;
+        padding: 6px !important;
+        border: 1px solid rgba(45,163,153,0.3) !important;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03) !important;
         gap: 6px;
     }
     .stTabs button[role="tab"] {
