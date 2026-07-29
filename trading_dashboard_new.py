@@ -574,12 +574,19 @@ st.markdown("""
 
     /* ══ SELECTBOX ══ */
     .stSelectbox > div > div {
-        background: #152a4b;
-        border: 1px solid rgba(29,78,216,0.25);
+        background: #152a4b !important;
+        border: 1px solid rgba(45,163,153,0.35) !important;
         border-radius: 8px;
-        color: #90b8d8;
+        color: #e8f4ff !important;
+        font-weight: 700 !important;
         font-family: 'Inter', sans-serif;
     }
+    .stSelectbox > div > div * {
+        color: #e8f4ff !important;
+        font-weight: 700 !important;
+        opacity: 1 !important;
+    }
+    .stSelectbox svg { fill: #e8f4ff !important; }
 
     /* ══ EXPANDER ══ */
     .streamlit-expanderHeader,
