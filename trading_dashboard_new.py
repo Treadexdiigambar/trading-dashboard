@@ -2265,7 +2265,7 @@ for tab, instrument, name, spot in [
         # Row 1: Key Levels
         kc1, kc2, kc3 = st.columns(3)
         with kc1:
-            st.markdown("**🔴 Resistance** *(Max Call OI)*")
+            st.markdown('<div style="font-size:15px;font-weight:800;color:#ff8080;margin-bottom:6px">🔴 Resistance <span style="font-weight:500;font-style:italic;color:#e8f4ff;opacity:0.85">(Max Call OI)</span></div>', unsafe_allow_html=True)
             for r in result["resistance_levels"]:
                 r_int = int(r)
                 # OI value bhi dikhao
@@ -2273,13 +2273,13 @@ for tab, instrument, name, spot in [
                 r_oi_str = f'<span style="font-size:11px;color:#ff525280;margin-left:8px">{int(r_oi[0]):,} OI</span>' if len(r_oi) > 0 else ""
                 st.markdown(f'<div class="key-level-resistance">🔴 {r_int:,}{r_oi_str}</div>', unsafe_allow_html=True)
         with kc2:
-            st.markdown("**⭐ Max Pain**")
+            st.markdown('<div style="font-size:15px;font-weight:800;color:#ffd966;margin-bottom:6px">⭐ Max Pain</div>', unsafe_allow_html=True)
             if result["max_pain"]:
                 st.markdown(f'<div class="fair-value">Max Pain<br><span style="font-size:32px;font-weight:900">{int(result["max_pain"]):,}</span></div>', unsafe_allow_html=True)
             if spot and result["atm_strike"]:
                 st.markdown(f'<div style="margin-top:8px;padding:8px;background:#14263e;border-radius:8px;text-align:center;border:1px solid rgba(29,78,216,0.15);color:white;font-size:13px">ATM: <b>{int(result["atm_strike"]):,}</b> | Spot: <b>{spot:,.0f}</b></div>', unsafe_allow_html=True)
         with kc3:
-            st.markdown("**🟢 Support** *(Max Put OI)*")
+            st.markdown('<div style="font-size:15px;font-weight:800;color:#5fe6a0;margin-bottom:6px">🟢 Support <span style="font-weight:500;font-style:italic;color:#e8f4ff;opacity:0.85">(Max Put OI)</span></div>', unsafe_allow_html=True)
             for s in result["support_levels"]:
                 s_int = int(s)
                 s_oi = result["df"][result["df"]["Strike"] == s]["Put OI"].values
