@@ -525,8 +525,8 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] {
         background: rgba(29,78,216,0.10) !important;
         border: 1px solid rgba(29,78,216,0.25) !important;
-        color: #cfe3f5 !important;
-        font-size: 14.5px !important;
+        color: #e8f4ff !important;
+        font-size: 16px !important;
         font-weight: 800 !important;
         letter-spacing: 0.2px;
         border-radius: 8px;
@@ -536,14 +536,14 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
     .stTabs [data-baseweb="tab"] p {
-        color: #cfe3f5 !important;
-        font-size: 14.5px !important;
+        color: #e8f4ff !important;
+        font-size: 16px !important;
         font-weight: 800 !important;
         opacity: 1 !important;
     }
     .stTabs [data-baseweb="tab"] * { opacity: 1 !important; color: inherit !important; }
     .stTabs [data-baseweb="tab"] span,
-    .stTabs [data-baseweb="tab"] div { color: #cfe3f5 !important; }
+    .stTabs [data-baseweb="tab"] div { color: #e8f4ff !important; font-size: 16px !important; font-weight: 800 !important; }
     .stTabs [aria-selected="true"] span,
     .stTabs [aria-selected="true"] div { color: #ffffff !important; }
 
@@ -553,6 +553,7 @@ st.markdown("""
     .stSelectbox label {
         color: #e8f4ff !important;
         font-weight: 700 !important;
+        font-size: 15px !important;
         opacity: 1 !important;
     }
     .stTabs [data-baseweb="tab"]:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
