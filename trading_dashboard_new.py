@@ -524,7 +524,7 @@ st.markdown("""
         box-shadow: 0 4px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03) !important;
         gap: 6px;
     }
-    .stTabs button[role="tab"] {
+    .stTabs button {
         background: rgba(29,78,216,0.10) !important;
         border: 1px solid rgba(29,78,216,0.25) !important;
         color: #e8f4ff !important;
@@ -537,19 +537,19 @@ st.markdown("""
         transition: all 0.2s;
         font-family: 'Inter', sans-serif;
     }
-    .stTabs button[role="tab"] p,
-    .stTabs button[role="tab"] span,
-    .stTabs button[role="tab"] div {
+    .stTabs button p,
+    .stTabs button span,
+    .stTabs button div {
         color: #e8f4ff !important;
         font-size: 16px !important;
         font-weight: 800 !important;
         opacity: 1 !important;
     }
-    .stTabs button[role="tab"] * { opacity: 1 !important; }
-    .stTabs button[role="tab"]:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
-    .stTabs button[role="tab"]:hover p,
-    .stTabs button[role="tab"]:hover span,
-    .stTabs button[role="tab"]:hover div { color: #ffffff !important; }
+    .stTabs button * { opacity: 1 !important; }
+    .stTabs button:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
+    .stTabs button:hover p,
+    .stTabs button:hover span,
+    .stTabs button:hover div { color: #ffffff !important; }
 
     /* ══ WIDGET LABELS (e.g. "Expiry Select Karo:") ══ */
     [data-testid="stWidgetLabel"] p,
@@ -560,15 +560,15 @@ st.markdown("""
         font-size: 15px !important;
         opacity: 1 !important;
     }
-    .stTabs button[role="tab"][aria-selected="true"] {
+    .stTabs button[aria-selected="true"] {
         background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
         color: white !important;
         border: 1px solid rgba(90,140,255,0.6) !important;
         box-shadow: 0 4px 14px rgba(29,78,216,0.55) !important;
     }
-    .stTabs button[role="tab"][aria-selected="true"] p,
-    .stTabs button[role="tab"][aria-selected="true"] span,
-    .stTabs button[role="tab"][aria-selected="true"] div { color: white !important; }
+    .stTabs button[aria-selected="true"] p,
+    .stTabs button[aria-selected="true"] span,
+    .stTabs button[aria-selected="true"] div { color: white !important; }
 
     /* ══ BUTTONS ══ */
     .stButton > button {
