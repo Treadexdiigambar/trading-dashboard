@@ -637,6 +637,15 @@ st.markdown("""
         box-shadow: 0 4px 20px rgba(255,82,82,0.1);
     }
 
+    /* ══ DISABLE STREAMLIT RERUN/STALE DIMMING ══ */
+    [data-stale="true"] { opacity: 1 !important; transition: none !important; }
+    .element-container, .stMarkdown, div[data-testid="stVerticalBlock"],
+    div[data-testid="stVerticalBlockBorderWrapper"], div[data-testid="stHorizontalBlock"],
+    div[data-testid="column"], div[data-testid="stMetric"] {
+        opacity: 1 !important;
+    }
+    div[data-testid="stAppViewContainer"] > .main { opacity: 1 !important; }
+
     /* ══ BLINK ANIMATIONS ══ */
     @keyframes blink_green  { 0%,100%{opacity:1;box-shadow:0 0 6px #00e676} 50%{opacity:0.25;box-shadow:none} }
     @keyframes blink_red    { 0%,100%{opacity:1;box-shadow:0 0 6px #ff5252} 50%{opacity:0.25;box-shadow:none} }
