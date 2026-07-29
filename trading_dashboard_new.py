@@ -2093,7 +2093,7 @@ for tab, instrument, name, spot in [
             <div style="background:#152b2c;border-radius:10px;padding:12px 18px;margin-bottom:12px;border:1px solid rgba(45,163,153,0.22);border-left:4px solid {tab_color}">
               <div style="display:flex;justify-content:space-between;align-items:center">
                 <div>
-                  <div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:2px">{tab_icon} {name} — Live Analysis</div>
+                  <div style="font-size:12.5px;color:#8fb8d4;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">{tab_icon} {name} — Live Analysis</div>
                   <div style="font-size:28px;font-weight:900;color:{tab_color}">{tab_price}</div>
                 </div>
                 <div style="text-align:right">
@@ -2105,7 +2105,7 @@ for tab, instrument, name, spot in [
         else:
             st.markdown(f"""
             <div style="background:#152b2c;border-radius:10px;padding:12px 18px;margin-bottom:12px;border:1px solid rgba(45,163,153,0.22);border-left:4px solid {tab_color}">
-              <div style="font-size:10px;color:#6495b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:2px">{tab_icon} {name} — Live Analysis</div>
+              <div style="font-size:12.5px;color:#8fb8d4;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">{tab_icon} {name} — Live Analysis</div>
               <div style="font-size:28px;font-weight:900;color:{tab_color}">{tab_price}</div>
             </div>""", unsafe_allow_html=True)
 
