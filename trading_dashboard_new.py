@@ -541,7 +541,20 @@ st.markdown("""
         font-weight: 800 !important;
         opacity: 1 !important;
     }
-    .stTabs [data-baseweb="tab"] * { opacity: 1 !important; }
+    .stTabs [data-baseweb="tab"] * { opacity: 1 !important; color: inherit !important; }
+    .stTabs [data-baseweb="tab"] span,
+    .stTabs [data-baseweb="tab"] div { color: #cfe3f5 !important; }
+    .stTabs [aria-selected="true"] span,
+    .stTabs [aria-selected="true"] div { color: #ffffff !important; }
+
+    /* ══ WIDGET LABELS (e.g. "Expiry Select Karo:") ══ */
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] label,
+    .stSelectbox label {
+        color: #e8f4ff !important;
+        font-weight: 700 !important;
+        opacity: 1 !important;
+    }
     .stTabs [data-baseweb="tab"]:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
     .stTabs [data-baseweb="tab"]:hover p { color: #ffffff !important; }
     .stTabs [aria-selected="true"] {
