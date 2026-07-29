@@ -400,8 +400,8 @@ st.markdown("""
 
     /* ══ SPOT PRICE CARD ══ */
     .spot-card {
-        background: linear-gradient(135deg, #152a4b 0%, #0e223c 100%);
-        border: 1px solid rgba(29,78,216,0.3);
+        background: linear-gradient(135deg, #1b2f36 0%, #101c22 100%);
+        border: 1px solid rgba(45,163,153,0.35);
         border-radius: 14px;
         padding: 14px 22px;
         box-shadow: 0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
@@ -480,10 +480,10 @@ st.markdown("""
 
     /* ══ METRICS ══ */
     div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, #152a4b 0%, #0e223c 100%);
+        background: linear-gradient(135deg, #1b2f36 0%, #101c22 100%);
         border-radius: 12px;
         padding: 16px;
-        border: 1px solid rgba(29,78,216,0.2);
+        border: 1px solid rgba(45,163,153,0.25);
         box-shadow: 0 4px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
         transition: border-color 0.3s;
     }
@@ -505,14 +505,14 @@ st.markdown("""
 
     /* ══ METRIC CARD (custom) ══ */
     .metric-card {
-        background: linear-gradient(135deg, #152a4b 0%, #0e223c 100%);
+        background: linear-gradient(135deg, #1b2f36 0%, #101c22 100%);
         border-radius: 12px;
         padding: 14px 16px;
-        border: 1px solid rgba(29,78,216,0.18);
+        border: 1px solid rgba(45,163,153,0.22);
         box-shadow: 0 4px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.03);
         transition: transform 0.15s, border-color 0.2s;
     }
-    .metric-card:hover { transform: translateY(-1px); border-color: rgba(29,78,216,0.4); }
+    .metric-card:hover { transform: translateY(-1px); border-color: rgba(45,163,153,0.45); }
 
     /* ══ TABS ══ */
     .stTabs [data-baseweb="tab-list"] {
