@@ -524,7 +524,7 @@ st.markdown("""
         box-shadow: 0 4px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03) !important;
         gap: 6px;
     }
-    .stTabs button {
+    .stTabs [aria-selected] {
         background: rgba(29,78,216,0.10) !important;
         border: 1px solid rgba(29,78,216,0.25) !important;
         color: #e8f4ff !important;
@@ -536,20 +536,21 @@ st.markdown("""
         opacity: 1 !important;
         transition: all 0.2s;
         font-family: 'Inter', sans-serif;
+        text-decoration: none !important;
     }
-    .stTabs button p,
-    .stTabs button span,
-    .stTabs button div {
+    .stTabs [aria-selected] p,
+    .stTabs [aria-selected] span,
+    .stTabs [aria-selected] div {
         color: #e8f4ff !important;
         font-size: 16px !important;
         font-weight: 800 !important;
         opacity: 1 !important;
     }
-    .stTabs button * { opacity: 1 !important; }
-    .stTabs button:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
-    .stTabs button:hover p,
-    .stTabs button:hover span,
-    .stTabs button:hover div { color: #ffffff !important; }
+    .stTabs [aria-selected] * { opacity: 1 !important; }
+    .stTabs [aria-selected]:hover { background: rgba(29,78,216,0.22) !important; border-color: rgba(29,78,216,0.5) !important; }
+    .stTabs [aria-selected]:hover p,
+    .stTabs [aria-selected]:hover span,
+    .stTabs [aria-selected]:hover div { color: #ffffff !important; }
 
     /* ══ WIDGET LABELS (e.g. "Expiry Select Karo:") ══ */
     [data-testid="stWidgetLabel"] p,
@@ -560,15 +561,18 @@ st.markdown("""
         font-size: 15px !important;
         opacity: 1 !important;
     }
-    .stTabs button[aria-selected="true"] {
+    .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
         color: white !important;
         border: 1px solid rgba(90,140,255,0.6) !important;
         box-shadow: 0 4px 14px rgba(29,78,216,0.55) !important;
+        border-bottom: 1px solid rgba(90,140,255,0.6) !important;
     }
-    .stTabs button[aria-selected="true"] p,
-    .stTabs button[aria-selected="true"] span,
-    .stTabs button[aria-selected="true"] div { color: white !important; }
+    .stTabs [aria-selected="true"] p,
+    .stTabs [aria-selected="true"] span,
+    .stTabs [aria-selected="true"] div { color: white !important; }
+    .stTabs [aria-selected="true"]::after,
+    .stTabs [aria-selected="true"]::before { display: none !important; border: none !important; background: transparent !important; }
 
     /* ══ BUTTONS ══ */
     .stButton > button {
