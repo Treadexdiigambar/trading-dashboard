@@ -2611,7 +2611,20 @@ for tab, instrument, name, spot in [
                 delta_sign  = "+" if delta_oi >= 0 else ""
                 delta_disp  = f"{delta_sign}{delta_oi/1000:.1f}K" if abs(delta_oi) >= 1000 else f"{delta_sign}{delta_oi}"
 
-                ci1, ci2, ci3, ci4, ci5, ci6, ci7 = st.columns(7)
+                # Delta % — hamesha -100 se +100 ke beech, isliye samajhna aasan
+                delta_pct     = round(put_pct - call_pct, 1)
+                delta_pct_abs = abs(delta_pct)
+                if delta_pct_abs < 5:
+                    dp_strength, dp_color = "Balanced", "#ffd600"
+                elif delta_pct_abs < 15:
+                    dp_strength, dp_color = "Mild tilt", "#ffab40"
+                elif delta_pct_abs < 30:
+                    dp_strength, dp_color = "Strong", ("#00e676" if delta_pct >= 0 else "#ff5252")
+                else:
+                    dp_strength, dp_color = "Extreme", ("#00e676" if delta_pct >= 0 else "#ff5252")
+                delta_pct_sign = "+" if delta_pct >= 0 else ""
+
+                ci1, ci2, ci3, ci4, ci5, ci6, ci7, ci8 = st.columns(8)
                 with ci1: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">ATM Strike</div><div style="font-size:24px;font-weight:900;color:#ffd600">{atm}</div></div>', unsafe_allow_html=True)
                 with ci2: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Spot Price</div><div style="font-size:24px;font-weight:900;color:#00bfff">{spot:,.0f}</div></div>', unsafe_allow_html=True)
                 with ci3: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Max Pain</div><div style="font-size:24px;font-weight:900;color:#ff9500">{max_pain}</div></div>', unsafe_allow_html=True)
@@ -2619,6 +2632,7 @@ for tab, instrument, name, spot in [
                 with ci5: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Put OI %</div><div style="font-size:24px;font-weight:900;color:#00e676">{put_pct}%</div></div>', unsafe_allow_html=True)
                 with ci6: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">PCR</div><div style="font-size:24px;font-weight:900;color:#a78bfa">{round(total_put/total_call,2) if total_call else 0}</div></div>', unsafe_allow_html=True)
                 with ci7: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Delta (Put−Call OI)</div><div style="font-size:24px;font-weight:900;color:{delta_color}">{delta_disp}</div></div>', unsafe_allow_html=True)
+                with ci8: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Delta %</div><div style="font-size:24px;font-weight:900;color:{dp_color}">{delta_pct_sign}{delta_pct}%</div><div style="font-size:10px;color:{dp_color};margin-top:2px">{dp_strength}</div></div>', unsafe_allow_html=True)
 
                 # OI bar
                 st.markdown(f"""
