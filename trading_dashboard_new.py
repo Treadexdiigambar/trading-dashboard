@@ -2605,13 +2605,20 @@ for tab, instrument, name, spot in [
                   <div style="font-size:13px;color:#ccc;margin-top:5px">{dom_msg}</div>
                 </div>""", unsafe_allow_html=True)
 
-                ci1, ci2, ci3, ci4, ci5, ci6 = st.columns(6)
+                # Delta = Put OI minus Call OI (bullish support ka weight minus bearish resistance ka weight)
+                delta_oi    = total_put - total_call
+                delta_color = "#00e676" if delta_oi >= 0 else "#ff5252"
+                delta_sign  = "+" if delta_oi >= 0 else ""
+                delta_disp  = f"{delta_sign}{delta_oi/1000:.1f}K" if abs(delta_oi) >= 1000 else f"{delta_sign}{delta_oi}"
+
+                ci1, ci2, ci3, ci4, ci5, ci6, ci7 = st.columns(7)
                 with ci1: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">ATM Strike</div><div style="font-size:24px;font-weight:900;color:#ffd600">{atm}</div></div>', unsafe_allow_html=True)
                 with ci2: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Spot Price</div><div style="font-size:24px;font-weight:900;color:#00bfff">{spot:,.0f}</div></div>', unsafe_allow_html=True)
                 with ci3: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Max Pain</div><div style="font-size:24px;font-weight:900;color:#ff9500">{max_pain}</div></div>', unsafe_allow_html=True)
                 with ci4: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Call OI %</div><div style="font-size:24px;font-weight:900;color:#ff5252">{call_pct}%</div></div>', unsafe_allow_html=True)
                 with ci5: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Put OI %</div><div style="font-size:24px;font-weight:900;color:#00e676">{put_pct}%</div></div>', unsafe_allow_html=True)
                 with ci6: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">PCR</div><div style="font-size:24px;font-weight:900;color:#a78bfa">{round(total_put/total_call,2) if total_call else 0}</div></div>', unsafe_allow_html=True)
+                with ci7: st.markdown(f'<div class="metric-card" style="text-align:center"><div style="font-size:10px;color:#888">Delta (Put−Call OI)</div><div style="font-size:24px;font-weight:900;color:{delta_color}">{delta_disp}</div></div>', unsafe_allow_html=True)
 
                 # OI bar
                 st.markdown(f"""
@@ -2642,6 +2649,32 @@ for tab, instrument, name, spot in [
                       📊 Active Range: <b style="color:#a78bfa">{top_put_chg_strike} — {top_call_chg_strike}</b>
                       <span style="color:#6495b8;font-size:11px">{active_label}</span>
                     </div>""", unsafe_allow_html=True)
+
+                # ── Combined Buy/Sell Signal — PCR + Delta + Dominance se ──
+                pcr_val   = round(total_put / total_call, 2) if total_call else 0
+                gap_pct   = abs(put_pct - call_pct)  # dominance kitni strong hai
+
+                if put_pct > call_pct + 10 and pcr_val >= 1.0:
+                    sig_label, sig_color, sig_bg = "🟢 BUY BIAS", "#00e676", "#00e67618"
+                    sig_reason = f"Put writers dominant ({put_pct}%) + PCR {pcr_val} bullish zone mein — support strong dikh raha hai"
+                elif call_pct > put_pct + 10 and pcr_val <= 0.8:
+                    sig_label, sig_color, sig_bg = "🔴 SELL BIAS", "#ff5252", "#ff525218"
+                    sig_reason = f"Call writers dominant ({call_pct}%) + PCR {pcr_val} bearish zone mein — resistance strong dikh raha hai"
+                else:
+                    sig_label, sig_color, sig_bg = "🟡 WAIT / NO CLEAR SIGNAL", "#ffd600", "#ffd60018"
+                    sig_reason = f"PCR {pcr_val} aur OI split ({call_pct}% Call vs {put_pct}% Put) mein koi strong dominance nahi — range-bound ho sakta hai"
+
+                conf_label = "High" if gap_pct >= 20 else ("Medium" if gap_pct >= 10 else "Low")
+
+                st.markdown(f"""
+                <div style="background:{sig_bg};border:2px solid {sig_color};border-radius:12px;padding:14px 20px;margin:6px 0 12px;text-align:center">
+                  <div style="font-size:22px;font-weight:900;color:{sig_color}">{sig_label}</div>
+                  <div style="font-size:13px;color:#ccc;margin-top:6px">{sig_reason}</div>
+                  <div style="font-size:11px;color:#888;margin-top:6px">Confidence: <b style="color:{sig_color}">{conf_label}</b> &nbsp;|&nbsp; Range: {top_put_strike}–{top_call_strike} ke beech valid</div>
+                </div>
+                <div style="font-size:11px;color:#6495b8;margin-bottom:10px">
+                  ⚠️ Ye sirf OI data se derived ek technical signal hai, guaranteed prediction nahi — candle rejection aur volume se hamesha confirm karo entry lene se pehle.
+                </div>""", unsafe_allow_html=True)
 
                 # ── Top 3 OI Highlights ───────────────────────
                 top3_call = df_d.nlargest(3, "Call OI")["Strike"].tolist()
